@@ -3,7 +3,6 @@ from aiogram.fsm.state import StatesGroup, State
 
 class OrderForm(StatesGroup):
     name = State()
-    email = State()
     phone = State()
     city = State()
     street = State()

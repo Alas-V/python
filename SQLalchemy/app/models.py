@@ -7,14 +7,13 @@ from sqlalchemy import (
     Numeric,
     BigInteger,
     Boolean,
-    Float
+    Float,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from database import Base
 from typing import List, Annotated, Optional
 from enum import Enum
 from datetime import datetime
-from email_validator import validate_email, EmailNotValidError
 
 
 intpk = Annotated[int, mapped_column(primary_key=True)]
@@ -40,6 +39,7 @@ updated_at = Annotated[
 class Payment(str, Enum):
     CARD = "card"
     BOT_WALLET = "bot_wallet"
+
 
 class BookGenre(str, Enum):
     FANTASY = "fantasy"
@@ -87,9 +87,15 @@ class Book(Base):
         nullable=False,
         default=BookStatus.PENDING,
     )
-    book_on_sale: Mapped[bool] = mapped_column(Boolean, index=True, nullable=True, server_default=text('FALSE'))
-    sale_value: Mapped[float] = mapped_column(Float, CheckConstraint("sale_value >= 0 AND sale_value <= 1"), server_default="0")
-    #0.1 = 10%, 1 = 100%
+    book_on_sale: Mapped[bool] = mapped_column(
+        Boolean, index=True, nullable=True, server_default=text("FALSE")
+    )
+    sale_value: Mapped[float] = mapped_column(
+        Float,
+        CheckConstraint("sale_value >= 0 AND sale_value <= 1"),
+        server_default="0",
+    )
+    # 0.1 = 10%, 1 = 100%
     book_price: Mapped[int] = mapped_column(Integer, CheckConstraint("book_price >= 0"))
     book_add_date: Mapped[created_at]
     book_genre: Mapped[BookGenre] = mapped_column(String(40))
@@ -143,6 +149,7 @@ class User(Base):
         lazy="joined",
         uselist=False,
     )
+    order_data: Mapped["OrderData"] = relationship(back_populates="user")
 
 
 class Review(Base):
@@ -162,17 +169,20 @@ class Review(Base):
 
 
 class OrderData(Base):
-    __tablename__ = 'order_data'
-    order_id : Mapped[intpk]
-    telegram_id : Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
-    name  : Mapped[str] = mapped_column(String, nullable=False)
-    email : Mapped[str] = mapped_column(String, nullable=True)
-    city : Mapped[str] = mapped_column(String, nullable=False)
-    street : Mapped[str] = mapped_column(String, nullable=False)
-    house : Mapped[str] = mapped_column(String, nullable=False)
-    apartment : Mapped[str] = mapped_column(String, nullable=True)
-    delivery_date : Mapped[str] = mapped_column(String, nullable=False)
-    payment_method : Mapped[Payment]
-    comment : Mapped[str] = mapped_column(String, nullable=True)
-    order_date : Mapped[created_at]
-
+    __tablename__ = "order_data"
+    order_id: Mapped[intpk]
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id")
+    )
+    name: Mapped[str] = mapped_column(String, nullable=True)
+    phone: Mapped[str] = mapped_column(String(14), nullable=True)
+    city: Mapped[str] = mapped_column(String, nullable=True)
+    street: Mapped[str] = mapped_column(String, nullable=True)
+    house: Mapped[str] = mapped_column(String, nullable=True)
+    apartment: Mapped[str] = mapped_column(String, nullable=True)
+    delivery_date: Mapped[str] = mapped_column(String, nullable=True)
+    payment_method: Mapped[Payment] = mapped_column(String, nullable=True)
+    comment: Mapped[str] = mapped_column(String, nullable=True)
+    created_date: Mapped[created_at]
+    updated_at: Mapped[updated_at]
+    user: Mapped["User"] = relationship(back_populates="order_data")

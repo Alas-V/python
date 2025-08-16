@@ -39,6 +39,11 @@ async def get_book_details_on_sale(book_data: dict):
 """
 
 
+async def get_cart_and_order_details(cart_data: dict, order_data: dict):
+    
+
+
+
 INFOTEXT = """📚 BookStore Demo Bot
 Прототип книжного магазина с полным циклом заказа
 

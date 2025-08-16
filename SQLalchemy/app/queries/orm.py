@@ -1,5 +1,15 @@
 from database import AsyncSessionLocal
-from models import Author, Book, User, Review, BookStatus, BookGenre, Cart, CartItem
+from models import (
+    Author,
+    Book,
+    User,
+    Review,
+    BookStatus,
+    BookGenre,
+    Cart,
+    CartItem,
+    OrderData,
+)
 from faker import Faker
 import random
 from datetime import datetime, timedelta
@@ -351,24 +361,47 @@ class OrderQueries:
                 return True, telegram_id
             return False, telegram_id
 
-    # @staticmethod
-    # async def get_total_cart(telegram_id):
-    #     async with AsyncSessionLocal() as session:
-    #         cart = await session.execute(
-    #             select(Cart).where(Cart.telegram_id == telegram_id)
-    #         )
-    #         cart = cart.scalar_one_or_none()
-    #         cart_items = await session.execute(
-    #             select(CartItem).where(CartItem.cart_id == cart.cart_id)
-    #         )
-    #         cart_items = cart_items.scalars()
-
-
-class Processing:
     @staticmethod
-    async def add_order_info(data_kind: str, data):
+    async def check_info_if_exist(telegram_id):
         async with AsyncSessionLocal() as session:
-            pass
+            info = await session.execute(
+                select(OrderData).where(telegram_id == telegram_id)
+            )
+            info = info.scalar_one_or_none()
+            if not info:
+                order_info = OrderData(telegram_id=telegram_id)
+                session.add(order_info)
+                await session.commit()
+            return
+
+    @staticmethod
+    async def update_info(telegram_id, column, data):
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(OrderData)
+                .where(telegram_id == telegram_id)
+                .values({column: data})
+            )
+            await session.commit()
+            return
+
+    @staticmethod
+    async def get_user_order_data(telegram_id):
+        async with AsyncSessionLocal() as session:
+            order_data = await session.execute(
+                select(
+                    OrderData.name,
+                    OrderData.phone,
+                    OrderData.city,
+                    OrderData.street,
+                    OrderData.house,
+                    OrderData.apartment,
+                    OrderData.payment_method,
+                    OrderData.comment,
+                ).where(telegram_id == telegram_id)
+            )
+            order_data = order_data.scalar()
+            return order_data
 
 
 class DBData:
@@ -434,8 +467,14 @@ class DBData:
                 telegram_id=717149416,
             )
             cart = Cart(telegram_id=user.telegram_id)
+            cart_item = Cart(
+                telegram_id=717149416,
+                cart_items_id=1,
+                book_id=15,
+                quantity=1,
+            )
             user.cart = cart
-            session.add(user)
+            session.add(user, cart, cart_item)
             authors = [
                 Author(author_name=fake.name(), author_country=fake.country())
                 for _ in range(25)
