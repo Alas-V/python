@@ -1,0 +1,12 @@
+# Main bot token
+TOKEN = "8105359390:AAHDZu0tKVAKy7zy-V1mu5zSZCMLjSvhOi4"
+
+# Admin ID
+ADMIN_ID = [
+    717149416,
+]
+
+# Photo's IDs
+GIZMO_PHOTO_ID = (
+    "AgACAgIAAxkBAAM6aHkECmM4CbqeOzxTgOh8rRL-5A8AAg78MRuH08hLzBbNqqnQZ6oBAAMCAAN5AAM2BA"
+)

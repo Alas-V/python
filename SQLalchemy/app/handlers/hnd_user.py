@@ -1,0 +1,192 @@
+from aiogram import F, Router
+from queries.orm import OrderQueries, BookQueries, UserQueries, SaleQueries
+from aiogram.types import CallbackQuery, Message
+from aiogram.filters import CommandStart
+from keyboards.kb_user import UserKeyboards
+from text_templates import get_book_details, get_book_details_on_sale, INFOTEXT
+
+
+user_router = Router()
+
+GENRES = {
+    "fantasy": "Фэнтази🚀",
+    "horror": "Ужасы👻",
+    "science_fiction": "Научная Фантастика🌌",
+    "detective": "Детектив🕵️",
+    "classic": "Классическая литература🎭",
+    "poetry": "Поэзия✒️",
+}
+
+
+@user_router.message(CommandStart())
+async def cmd_start(message: Message):
+    user_data = {
+        "telegram_id": message.from_user.id,
+        "username": message.from_user.username,
+        "user_first_name": message.from_user.first_name,
+    }
+    user = await UserQueries.get_user_if_exist(user_data)
+    text = f"""
+📖 Привет {user.user_first_name}, Я — Book Bot *DEMO*, твой персональный помощник в мире книг.  
+
+    ✨ Здесь ты можешь:  
+    
+    - 🛒 Купить новинки и бестселлеры  
+    - 🔍 Найти книги по жанрам  
+    - 💰 Получать скидки  
+
+Давай начнем! Выбери действие в меню.
+    """
+    await message.answer(text, reply_markup=await UserKeyboards.main_menu())
+
+
+@user_router.callback_query(F.data == "main_menu")
+async def menu(callback: CallbackQuery):
+    text = """
+        📚 Главное меню Book Bot  
+
+Выберите раздел:  
+
+    - 🛒 Корзина 
+    - 📚 Каталог       
+    - 🔥 Товары со скидкой  
+    - ℹ️ Информация 
+    """
+    await callback.answer("Возвращение в Меню")
+    await callback.message.edit_text(text, reply_markup=await UserKeyboards.main_menu())
+
+
+@user_router.callback_query(F.data == "information")
+async def information(callback: CallbackQuery):
+    await callback.answer("")
+    await callback.message.edit_text(
+        f"{INFOTEXT}", reply_markup=await UserKeyboards.info_out()
+    )
+
+
+@user_router.callback_query(F.data == "catalog")
+async def genre_search(callback: CallbackQuery):
+    await callback.answer("")
+    await callback.message.edit_text(
+        "Выберите жанр для поиска:", reply_markup=await UserKeyboards.show_genre()
+    )
+
+
+@user_router.callback_query(F.data == "cart")
+async def cart(callback: CallbackQuery):
+    telegram_id = callback.from_user.id
+    total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
+    list_of_books = []
+    for book_data in cart_data:
+        books_inside = (
+            f"\n{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽"
+        )
+        list_of_books.append(books_inside)
+    user_balance = await UserQueries.get_user_balance(telegram_id)
+    await callback.answer("Корзина")
+    if total_price > 1:
+        await callback.message.edit_text(
+            f"    🛒Корзина\n{''.join(list_of_books)}\n\nВаш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
+            reply_markup=await UserKeyboards.in_cart(telegram_id),
+        )
+    else:
+        await callback.message.edit_text(
+            f"    🛒Ваша корзина пуста!\n\nВаш баланс - {user_balance}₽",
+            reply_markup=await UserKeyboards.in_empty_cart(),
+        )
+
+
+@user_router.callback_query(F.data == "sale_menu")
+async def sale_menu(callback: CallbackQuery):
+    await callback.answer("")
+    await callback.message.edit_text(
+        "Выберите жанр для поиска:",
+        reply_markup=await UserKeyboards.show_genre_on_sale(),
+    )
+
+
+@user_router.callback_query(F.data.startswith("sale_"))
+async def sale_genre(callback: CallbackQuery):
+    genres = callback.data.split("_")[1]
+    books = await SaleQueries.get_sale_genre(genres)
+    if not books:
+        await callback.answer("Книг этого жанра не найдено")
+        return
+    genre_in_text = GENRES[genres]
+    await callback.answer("")
+    await callback.message.edit_text(
+        f"📚 Книги со скидкой в жанре {genre_in_text}:",
+        reply_markup=await UserKeyboards.sale_books_by_genre_keyboard(books),
+    )
+
+
+@user_router.callback_query(F.data.startswith("genre_"))
+async def classic_show_books(callback: CallbackQuery):
+    genres = callback.data.split("_")[1]
+    books = await BookQueries.get_book_by_genre(genres)
+    if not books:
+        await callback.answer("Книг этого жанра не найдено")
+        return
+    genre_in_text = GENRES[genres]
+    await callback.answer()
+    await callback.message.edit_text(
+        f"📚 Книги в жанре {genre_in_text}:",
+        reply_markup=await UserKeyboards.books_by_genre_keyboard(books),
+    )
+
+
+@user_router.callback_query(F.data.startswith("book_"))
+async def book_details(callback: CallbackQuery):
+    book_id = callback.data.split("_")[1]
+    book_data = await BookQueries.get_book_info(book_id)
+    if not book_data:
+        await callback.answer(
+            "Не удалось найти книгу. Повторите попытку позже", show_alert=True
+        )
+        return
+    if book_data["book_on_sale"]:
+        text = await get_book_details_on_sale(book_data)
+    else:
+        text = await get_book_details(book_data)
+    genre_in_text = GENRES[book_data["book_genre"]]
+    await callback.message.edit_text(
+        text,
+        reply_markup=await UserKeyboards.book_details(
+            book_data["book_id"],
+            book_data["book_genre"],
+            book_data["book_on_sale"],
+            genre_in_text,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@user_router.callback_query(F.data.startswith("add_to_cart_book_"))
+async def add_to_cart_book(callback: CallbackQuery):
+    book_id = int(callback.data.split("_")[4])
+    telegram_id = callback.from_user.id
+    await OrderQueries.add_book_to_cart(telegram_id, book_id)
+    total_price, books_in_cart = await OrderQueries.get_cart_total(telegram_id)
+    list_of_books = []
+    for book_data in books_in_cart:
+        books_inside = f"\n{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽/шт."
+        list_of_books.append(books_inside)
+    await callback.answer(
+        f"Книга успешно добавлена!\nВ вашей корзине:\n{''.join(list_of_books)}\n\nСумма корзины -  {total_price} ₽",
+        show_alert=True,
+    )
+
+
+@user_router.callback_query(F.data.startswith("delete_cart_"))
+async def clean_the_cart(callback: CallbackQuery):
+    telegram_id = int(callback.data.split("_")[2])
+    del_cart, telegram_id = await OrderQueries.del_cart(telegram_id)
+    if del_cart:
+        await callback.answer("Ваша корзина отчищена!", show_alert=True)
+    else:
+        await callback.answer("Ваша корзина пуста!", show_alert=True)
+    user_balance = await UserQueries.get_user_balance(telegram_id)
+    await callback.message.edit_text(
+        f"    🛒Ваша корзина пуста!\n\nВаш баланс - {user_balance}₽",
+        reply_markup=await UserKeyboards.in_empty_cart(),
+    )

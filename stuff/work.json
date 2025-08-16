@@ -1,0 +1,12 @@
+{
+    "key": "value",
+    "key_dict": {
+        "key_in_dict": "value in dict",
+        "second_in_dict_key": "second value"
+    },
+    "notes": [
+        {
+            "random": "yea, some random shit"
+        }
+    ]
+}
