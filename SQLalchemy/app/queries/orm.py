@@ -396,7 +396,7 @@ class OrderQueries:
                     OrderData.street,
                     OrderData.house,
                     OrderData.apartment,
-                    OrderData.payment_method,
+                    OrderData.payment,
                     OrderData.comment,
                 ).where(telegram_id == telegram_id)
             )
@@ -467,14 +467,8 @@ class DBData:
                 telegram_id=717149416,
             )
             cart = Cart(telegram_id=user.telegram_id)
-            cart_item = Cart(
-                telegram_id=717149416,
-                cart_items_id=1,
-                book_id=15,
-                quantity=1,
-            )
             user.cart = cart
-            session.add(user, cart, cart_item)
+            session.add_all([user, cart])
             authors = [
                 Author(author_name=fake.name(), author_country=fake.country())
                 for _ in range(25)
@@ -533,6 +527,13 @@ class DBData:
                 )
                 for _ in range(250)
             ]
-            session.add_all(reviews)
+            cart_item = CartItem(
+                cart_id=1,
+                cart_items_id=1,
+                book_id=15,
+                quantity=1,
+                price=1000,
+            )
+            session.add_all([reviews, cart_item])
             await session.commit()
         print("✅ Тестовые данные успешно сгенерированы ✅")

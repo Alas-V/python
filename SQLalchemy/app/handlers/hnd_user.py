@@ -86,7 +86,7 @@ async def cart(callback: CallbackQuery):
     await callback.answer("Корзина")
     if total_price > 1:
         await callback.message.edit_text(
-            f"    🛒Корзина\n{''.join(list_of_books)}\n\nВаш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
+            f"    🛒Корзина\n📖{''.join(list_of_books)}\n\nВаш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
             reply_markup=await UserKeyboards.in_cart(telegram_id),
         )
     else:

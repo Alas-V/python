@@ -8,7 +8,6 @@ from queries.core import (
 from queries.orm import BookQueries, AuthorQueries, DBData, UserQueries, SaleQueries
 from schemas import AuthorCreate
 import asyncio
-
 from aiogram import Bot, Dispatcher
 from config import TOKEN
 from handlers import setup_router

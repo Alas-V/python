@@ -181,7 +181,7 @@ class OrderData(Base):
     house: Mapped[str] = mapped_column(String, nullable=True)
     apartment: Mapped[str] = mapped_column(String, nullable=True)
     delivery_date: Mapped[str] = mapped_column(String, nullable=True)
-    payment_method: Mapped[Payment] = mapped_column(String, nullable=True)
+    payment: Mapped[Payment] = mapped_column(String, nullable=True)
     comment: Mapped[str] = mapped_column(String, nullable=True)
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]

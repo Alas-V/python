@@ -5,6 +5,9 @@ from utils.states import OrderForm
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from queries.orm import OrderQueries, UserQueries
+from text_templates import order_data_structure
+from aiogram.fsm.context import FSMContext
+from keyboards.kb_order import OrderProcessing
 
 processing = Router()
 
@@ -17,30 +20,35 @@ async def delete_user_message(message: Message):
 
 
 @processing.callback_query(F.data == "processing_cart")
-async def first_msg(callback: CallbackQuery):
-    telegram_id = callback.from_user.id 
+async def first_msg(callback: CallbackQuery, state: FSMContext):
+    telegram_id = callback.from_user.id
     total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
     list_of_books = []
     for book_data in cart_data:
         books_inside = (
-            f"\n{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽"
+            f"\n📖{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽"
         )
         list_of_books.append(books_inside)
     user_balance = await UserQueries.get_user_balance(telegram_id)
     order_data = await OrderQueries.get_user_order_data(telegram_id)
-    name, phone, city, street, house, apartment, payment_method, comment = oder_data
+    text = await order_data_structure(
+        list_of_books, total_price, order_data, user_balance
+    )
+    await callback.message.edit_text(
+        text, reply_markup=await OrderProcessing.order_details()
+    )
+    await state.update_data(message_id=callback.message.message_id)
 
 
-
-
-@processing.callback_query(F.data == "processing_cart")
-async def order_info(callback: CallbackQuery, state: FSMContext):
-    telegram_id = callback.from_user.id
-    await OrderQueries.check_info_if_exist(telegram_id)
-    await state.set_state(OrderForm.name)
-    text = 
-    await callback.message.edit_text(text,)
-    await callback.message.answer("👤 Введите имя получателя")
+@processing.callback_query(F.data.startswith("change_"))
+async def change_details(callback: CallbackQuery, state: FSMContext):
+    column = callback.data.split("_")[1]
+    if column == "address":
+        await callback.message.edit_text(
+            "✏️Выберите что вы хотите изменить:",
+            reply_markup=await OrderProcessing.kb_address_change(),
+        )
+    await state.set_state(f"OrderForm.{column}")
 
 
 @processing.message(OrderForm.name)

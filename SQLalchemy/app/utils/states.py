@@ -9,5 +9,5 @@ class OrderForm(StatesGroup):
     house = State()
     apartment = State()
     delivery_date = State()
-    payment_method = State()
+    payment = State()
     comment = State()

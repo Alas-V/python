@@ -1,8 +1,7 @@
-
 async def get_book_details(book_data: dict):
     rating = float(book_data.get("book_rating"))
     price = float(book_data.get("book_price"))
-        
+
     return f"""
 📖 <b>{book_data.get("book_title")}</b>
 
@@ -21,7 +20,7 @@ async def get_book_details(book_data: dict):
 async def get_book_details_on_sale(book_data: dict):
     rating = float(book_data.get("book_rating", 0))
     price = float(book_data.get("book_price", 0))
-    sale_value = float(book_data.get("sale_value", 0))    
+    sale_value = float(book_data.get("sale_value", 0))
     new_price = round(price * (1 - sale_value), 2)
     discount_percent = round(100 * sale_value)
     return f"""
@@ -39,9 +38,39 @@ async def get_book_details_on_sale(book_data: dict):
 """
 
 
-async def get_cart_and_order_details(cart_data: dict, order_data: dict):
-    
+async def order_data_structure(list_of_books, total_price, order_data, user_balance):
+    name, phone, city, street, house, apartment, payment, comment = order_data
+    name = name if name else "Не указано"
+    phone = phone if phone else "Не указан"
+    city = city if city else "Не указан"
+    street = street if street else "Не указана"
+    house = house if house else "Не указан"
+    apartment = apartment if apartment else ""
+    payment = payment if payment else "Не указан"
+    comment = comment if comment else "Не указан"
+    if city and street and house is not None:
+        if apartment:
+            address = f"г.{city}, {street}, {house}, {apartment}кв."
+        else:
+            address = f"г.{city}, {street}, {house}"
+    else:
+        address = "Не указан"
+    return f"""
+f"    🛒Корзина
+{"".join(list_of_books)}
 
+
+Ваш баланс - {user_balance}₽
+Сумма корзины -  {total_price}₽"
+
+
+    📝 Текущие данные заказа: 
+👤 Имя: {name}
+📞 Номер телефона: {phone}
+🏠 Адрес: {address}
+💳 Способ оплаты: {payment}
+💭 Комментарий: {comment}
+"""
 
 
 INFOTEXT = """📚 BookStore Demo Bot
