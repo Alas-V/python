@@ -1,6 +1,6 @@
 from aiogram import Dispatcher
-from .hnd_user import user_router
 from .hnd_processing import processing
+from .hnd_user import user_router
 
 
 def setup_router(dp: Dispatcher):
