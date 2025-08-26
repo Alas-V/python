@@ -35,9 +35,17 @@ async def first_msg(callback: CallbackQuery, state: FSMContext):
         list_of_books, total_price, order_data, user_balance
     )
     await callback.message.edit_text(
-        text, reply_markup=await OrderProcessing.order_details()
+        text, reply_markup=await OrderProcessing.kb_change_details()
     )
     await state.update_data(message_id=callback.message.message_id)
+
+
+@processing.callback_query(F.data == "what_to_change")
+async def choose_change(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "✏️Выберите что вы хотите изменить или добавить",
+        reply_markup=await OrderProcessing.order_details(),
+    )
 
 
 @processing.callback_query(F.data.startswith("change_"))
@@ -45,7 +53,7 @@ async def change_details(callback: CallbackQuery, state: FSMContext):
     column = callback.data.split("_")[1]
     if column == "address":
         await callback.message.edit_text(
-            "✏️Выберите что вы хотите изменить:",
+            "✏️Выберите что вы хотите изменить или добавить",
             reply_markup=await OrderProcessing.kb_address_change(),
         )
     await state.set_state(f"OrderForm.{column}")

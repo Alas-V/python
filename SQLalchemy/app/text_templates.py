@@ -39,13 +39,12 @@ async def get_book_details_on_sale(book_data: dict):
 
 
 async def order_data_structure(list_of_books, total_price, order_data, user_balance):
-    name, phone, city, street, house, apartment, payment, comment = order_data
+    defaults = (None,) * 8
+    name, phone, city, street, house, apartment, payment, comment = (
+        order_data if order_data else defaults
+    )
     name = name if name else "Не указано"
     phone = phone if phone else "Не указан"
-    city = city if city else "Не указан"
-    street = street if street else "Не указана"
-    house = house if house else "Не указан"
-    apartment = apartment if apartment else ""
     payment = payment if payment else "Не указан"
     comment = comment if comment else "Не указан"
     if city and street and house is not None:
@@ -56,15 +55,16 @@ async def order_data_structure(list_of_books, total_price, order_data, user_bala
     else:
         address = "Не указан"
     return f"""
-f"    🛒Корзина
+            🛒Корзина
 {"".join(list_of_books)}
 
 
 Ваш баланс - {user_balance}₽
-Сумма корзины -  {total_price}₽"
+Сумма корзины -  {total_price}₽
 
 
-    📝 Текущие данные заказа: 
+            📝 Текущие данные заказа: 
+
 👤 Имя: {name}
 📞 Номер телефона: {phone}
 🏠 Адрес: {address}

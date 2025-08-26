@@ -369,7 +369,18 @@ class OrderQueries:
             )
             info = info.scalar_one_or_none()
             if not info:
-                order_info = OrderData(telegram_id=telegram_id)
+                order_info = OrderData(
+                    name=None,
+                    phone=None,
+                    city=None,
+                    street=None,
+                    house=None,
+                    apartment=None,
+                    delivery_date=None,
+                    payment=None,
+                    comment=None,
+                    telegram_id=telegram_id,
+                )
                 session.add(order_info)
                 await session.commit()
             return
@@ -400,8 +411,7 @@ class OrderQueries:
                     OrderData.comment,
                 ).where(telegram_id == telegram_id)
             )
-            order_data = order_data.scalar()
-            return order_data
+            return order_data.first()
 
 
 class DBData:
@@ -534,6 +544,7 @@ class DBData:
                 quantity=1,
                 price=1000,
             )
-            session.add_all([reviews, cart_item])
+            session.add_all(reviews)
+            session.add(cart_item)
             await session.commit()
         print("✅ Тестовые данные успешно сгенерированы ✅")
