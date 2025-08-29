@@ -385,11 +385,16 @@ class OrderQueries:
     #         return
 
     @staticmethod
-    async def update_info(telegram_id, column, data):
+    async def update_info(telegram_id, address_id, column, data):
         async with AsyncSessionLocal() as session:
             await session.execute(
                 update(UserAddress)
-                .where(telegram_id == telegram_id)
+                .where(
+                    and_(
+                        UserAddress.telegram_id == telegram_id,
+                        UserAddress.address_id == address_id,
+                    )
+                )
                 .values({column: data})
             )
             await session.commit()
