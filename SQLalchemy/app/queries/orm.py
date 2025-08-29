@@ -8,7 +8,7 @@ from models import (
     BookGenre,
     Cart,
     CartItem,
-    OrderData,
+    UserAddress,
 )
 from faker import Faker
 import random
@@ -361,35 +361,34 @@ class OrderQueries:
                 return True, telegram_id
             return False, telegram_id
 
-    @staticmethod
-    async def check_info_if_exist(telegram_id):
-        async with AsyncSessionLocal() as session:
-            info = await session.execute(
-                select(OrderData).where(telegram_id == telegram_id)
-            )
-            info = info.scalar_one_or_none()
-            if not info:
-                order_info = OrderData(
-                    name=None,
-                    phone=None,
-                    city=None,
-                    street=None,
-                    house=None,
-                    apartment=None,
-                    delivery_date=None,
-                    payment=None,
-                    comment=None,
-                    telegram_id=telegram_id,
-                )
-                session.add(order_info)
-                await session.commit()
-            return
+    # @staticmethod
+    # async def check_info_if_exist(telegram_id):
+    #     async with AsyncSessionLocal() as session:
+    #         info = await session.execute(
+    #             select(UserAddress).where(telegram_id == telegram_id)
+    #         )
+    #         info = info.scalar_one_or_none()
+    #         if not info:
+    #             order_info = UserAddress(
+    #                 name=None,
+    #                 phone=None,
+    #                 city=None,
+    #                 street=None,
+    #                 house=None,
+    #                 apartment=None,
+    #                 payment=None,
+    #                 comment=None,
+    #                 telegram_id=telegram_id,
+    #             )
+    #             session.add(order_info)
+    #             await session.commit()
+    #         return
 
     @staticmethod
     async def update_info(telegram_id, column, data):
         async with AsyncSessionLocal() as session:
             await session.execute(
-                update(OrderData)
+                update(UserAddress)
                 .where(telegram_id == telegram_id)
                 .values({column: data})
             )
@@ -397,21 +396,75 @@ class OrderQueries:
             return
 
     @staticmethod
-    async def get_user_order_data(telegram_id):
+    async def get_user_address_data(telegram_id, address_id):
         async with AsyncSessionLocal() as session:
             order_data = await session.execute(
                 select(
-                    OrderData.name,
-                    OrderData.phone,
-                    OrderData.city,
-                    OrderData.street,
-                    OrderData.house,
-                    OrderData.apartment,
-                    OrderData.payment,
-                    OrderData.comment,
-                ).where(telegram_id == telegram_id)
+                    UserAddress.name,
+                    UserAddress.phone,
+                    UserAddress.city,
+                    UserAddress.street,
+                    UserAddress.house,
+                    UserAddress.apartment,
+                    UserAddress.payment,
+                    UserAddress.comment,
+                ).where(
+                    and_(
+                        UserAddress.telegram_id == telegram_id,
+                        UserAddress.address_id == address_id,
+                    )
+                )
             )
             return order_data.first()
+
+    @staticmethod
+    async def has_address(telegram_id):
+        async with AsyncSessionLocal() as session:
+            has_address = await session.execute(
+                select(UserAddress.address_id).where(
+                    UserAddress.telegram_id == telegram_id
+                )
+            )
+            address = has_address.scalar_one_or_none()
+            if address:
+                return True
+            return False
+
+    @staticmethod
+    async def get_address_small(telegram_id):
+        async with AsyncSessionLocal() as session:
+            addresses = await session.execute(
+                select(
+                    UserAddress.address_id,
+                    UserAddress.city,
+                    UserAddress.street,
+                    UserAddress.house,
+                )
+                .where(UserAddress.telegram_id == telegram_id)
+                .order_by(UserAddress.created_date.desc())
+                .limit(1)
+            )
+            return addresses.scalars()
+
+    @staticmethod
+    async def add_address_get_id(telegram_id):
+        async with AsyncSessionLocal() as session:
+            new_address = UserAddress(
+                telegram_id=telegram_id,
+                name=None,
+                phone=None,
+                city=None,
+                street=None,
+                house=None,
+                apartment=None,
+                payment=None,
+                comment=None,
+            )
+            session.add(new_address)
+            await session.flush()
+            address_id = new_address.address_id
+            await session.commit()
+            return address_id
 
 
 class DBData:

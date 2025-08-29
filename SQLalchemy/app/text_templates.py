@@ -73,6 +73,33 @@ async def order_data_structure(list_of_books, total_price, order_data, user_bala
 """
 
 
+async def text_address_data(order_data):
+    defaults = (None,) * 8
+    name, phone, city, street, house, apartment, payment, comment = (
+        order_data if order_data else defaults
+    )
+    name = name if name else "Не указано"
+    phone = phone if phone else "Не указан"
+    payment = payment if payment else "Не указан"
+    comment = comment if comment else "Не указан"
+    if city and street and house is not None:
+        if apartment:
+            address = f"г.{city}, {street}, {house}, {apartment}кв."
+        else:
+            address = f"г.{city}, {street}, {house}"
+    else:
+        address = "Не указан"
+    return f"""
+            📝 Текущие данные заказа: 
+
+👤 Имя: {name}
+📞 Номер телефона: {phone}
+🏠 Адрес: {address}
+💳 Способ оплаты: {payment}
+💭 Комментарий: {comment}
+"""
+
+
 INFOTEXT = """📚 BookStore Demo Bot
 Прототип книжного магазина с полным циклом заказа
 

@@ -190,7 +190,7 @@ class UserKeyboards:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
-    async def in_cart(telegram_id) -> InlineKeyboardMarkup:
+    async def in_cart_no_address(telegram_id) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -200,7 +200,29 @@ class UserKeyboards:
                     ),
                     InlineKeyboardButton(
                         text="📃Перейти к оформлению",
-                        callback_data="processing_cart",
+                        callback_data="new_address",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙Главное меню", callback_data="main_menu"
+                    ),
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def in_cart_has_address(telegram_id) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🗑️Отчистить корзину",
+                        callback_data=f"delete_cart_{telegram_id}",
+                    ),
+                    InlineKeyboardButton(
+                        text="📃Перейти к оформлению",
+                        callback_data="choose_address",
                     ),
                 ],
                 [

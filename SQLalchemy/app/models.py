@@ -150,6 +150,7 @@ class User(Base):
         uselist=False,
     )
     order_data: Mapped["OrderData"] = relationship(back_populates="user")
+    address: Mapped["UserAddress"] = relationship(back_populates="user")
 
 
 class Review(Base):
@@ -171,6 +172,19 @@ class Review(Base):
 class OrderData(Base):
     __tablename__ = "order_data"
     order_id: Mapped[intpk]
+    address_id: Mapped[int] = mapped_column(ForeignKey("users_addresses.address_id"))
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id")
+    )
+    delivery_date: Mapped[str] = mapped_column(String, nullable=True)
+    created_date: Mapped[created_at]
+    updated_at: Mapped[updated_at]
+    user: Mapped["User"] = relationship(back_populates="order_data")
+
+
+class UserAddress(Base):
+    __tablename__ = "users_addresses"
+    address_id: Mapped[intpk]
     telegram_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.telegram_id")
     )
@@ -180,9 +194,8 @@ class OrderData(Base):
     street: Mapped[str] = mapped_column(String, nullable=True)
     house: Mapped[str] = mapped_column(String, nullable=True)
     apartment: Mapped[str] = mapped_column(String, nullable=True)
-    delivery_date: Mapped[str] = mapped_column(String, nullable=True)
     payment: Mapped[Payment] = mapped_column(String, nullable=True)
     comment: Mapped[str] = mapped_column(String, nullable=True)
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
-    user: Mapped["User"] = relationship(back_populates="order_data")
+    user: Mapped["User"] = relationship(back_populates="address")

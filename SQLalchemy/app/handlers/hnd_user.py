@@ -85,10 +85,17 @@ async def cart(callback: CallbackQuery):
     user_balance = await UserQueries.get_user_balance(telegram_id)
     await callback.answer("Корзина")
     if total_price > 1:
-        await callback.message.edit_text(
-            f"    🛒Корзина\n📖{''.join(list_of_books)}\n\nВаш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
-            reply_markup=await UserKeyboards.in_cart(telegram_id),
-        )
+        has_address = await OrderQueries.has_address(telegram_id)
+        if has_address:
+            await callback.message.edit_text(
+                f"    🛒Корзина\n📖{''.join(list_of_books)}\n\nВаш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
+                reply_markup=await UserKeyboards.in_cart_has_address(telegram_id),
+            )
+        else:
+            await callback.message.edit_text(
+                f"    🛒Корзина\n📖{''.join(list_of_books)}\n\nВаш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
+                reply_markup=await UserKeyboards.in_cart_no_address(telegram_id),
+            )
     else:
         await callback.message.edit_text(
             f"    🛒Ваша корзина пуста!\n\nВаш баланс - {user_balance}₽",
