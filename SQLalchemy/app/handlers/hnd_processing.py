@@ -74,12 +74,12 @@ async def edit_address(callback: CallbackQuery):
 
 
 @processing.callback_query(F.data == "choose_address")
-async def choosing_address(callback: CallbackQuery):
+async def choose_address(callback: CallbackQuery):
     telegram_id = callback.from_user.id
-    address = await OrderQueries.get_address_small(telegram_id)
+    addresses = await OrderQueries.get_address_small(telegram_id)
     await callback.message.edit_text(
         "🚚Выберите адрес доставки:",
-        reply_markup=await OrderProcessing.kb_choose_address(address),
+        reply_markup=await OrderProcessing.kb_choose_address(addresses),
     )
 
 
@@ -116,11 +116,12 @@ async def process_name(message: Message, state: FSMContext):
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    formatted_name = message.text.strip().lower().capitalize()
     await OrderQueries.update_info(
         telegram_id=message.from_user.id,
         address_id=address_id,
         column="name",
-        data=message.text,
+        data=formatted_name,
     )
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id
@@ -129,28 +130,166 @@ async def process_name(message: Message, state: FSMContext):
     await bot.edit_message_text(
         chat_id=message.chat.id,
         message_id=main_message_id,
-        text=f"📝 *Создание адреса:*\n\n{text}",
+        text=f"📝 *Данные доставки:*\n\n{text}",
         reply_markup=await OrderProcessing.kb_change_details(address_id),
         parse_mode="Markdown",
     )
-    temp_mess = await message.answer("✅ Данные обновлены", show_alert=False)
-    await asyncio.sleep(2)
-    await temp_mess.delete()
+    temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
     new_hint = await message.answer("📞 *Введите телефон:*", parse_mode="Markdown")
+    await state.set_state(OrderForm.phone)
+    await asyncio.sleep(1.5)
+    await temp_mess.delete()
     await state.update_data(
         last_hint_id=new_hint.message_id, user_messages=[], current_step="phone"
     )
-    await state.set_state(OrderForm.phone)
 
 
-# @processing.message(OrderForm.name)
-# async def info_name(message: Message, state: FSMContext):
-#     telegram_id = message.from_user.id
-#     await state.update_data(last_bot_msg_id=message.message_id)
-#     await delete_user_message(message)
-#     await OrderQueries.update_info(telegram_id, "name", message.text)
-#     await state.set_state(OrderForm.phone)
-#     await edit_or_send_new(message, "📞 Введите ваш номер телефона", state)
+@processing.message(OrderForm.phone)
+async def process_phone(message: Message, state: FSMContext):
+    bot = message.bot
+    data = await state.get_data()
+    address_id = data["address_id"]
+    main_message_id = data["main_message_id"]
+    last_hint_id = data["last_hint_id"]
+    user_messages = data.get("user_messages", [])
+    user_messages.append(message.message_id)
+    await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    await OrderQueries.update_info(
+        telegram_id=message.from_user.id,
+        address_id=address_id,
+        column="phone",
+        data=message.text,
+    )
+    address_data = await OrderQueries.get_user_address_data(
+        message.from_user.id, address_id
+    )
+    text_address = await text_address_data(address_data)
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=main_message_id,
+        text=f"{text_address}",
+        reply_markup=await OrderProcessing.kb_change_details(address_id),
+    )
+    temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
+    new_hint = await message.answer("🗺️ *Введите Город:*", parse_mode="Markdown")
+    await state.set_state(OrderForm.city)
+    await asyncio.sleep(1.5)
+    await temp_mess.delete()
+    await state.update_data(
+        last_hint_id=new_hint.message_id, user_messages=[], current_step="city"
+    )
+
+
+@processing.message(OrderForm.city)
+async def process_city(message: Message, state: FSMContext):
+    bot = message.bot
+    data = await state.get_data()
+    address_id = data["address_id"]
+    main_message_id = data["main_message_id"]
+    last_hint_id = data["last_hint_id"]
+    user_messages = data.get("user_messages", [])
+    user_messages.append(message.message_id)
+    await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    formatted_city = message.text.strip().lower().capitalize()
+    await OrderQueries.update_info(
+        telegram_id=message.from_user.id,
+        address_id=address_id,
+        column="city",
+        data=formatted_city,
+    )
+    address_data = await OrderQueries.get_user_address_data(
+        message.from_user.id, address_id
+    )
+    text_address = await text_address_data(address_data)
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=main_message_id,
+        text=f"{text_address}",
+        reply_markup=await OrderProcessing.kb_change_details(address_id),
+    )
+    temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
+    new_hint = await message.answer("🛣️ *Введите Улицу:*", parse_mode="Markdown")
+    await state.set_state(OrderForm.street)
+    await asyncio.sleep(1.5)
+    await temp_mess.delete()
+    await state.update_data(
+        last_hint_id=new_hint.message_id, user_messages=[], current_step="street"
+    )
+
+
+@processing.message(OrderForm.street)
+async def process_street(message: Message, state: FSMContext):
+    bot = message.bot
+    data = await state.get_data()
+    address_id = data["address_id"]
+    main_message_id = data["main_message_id"]
+    last_hint_id = data["last_hint_id"]
+    user_messages = data.get("user_messages", [])
+    user_messages.append(message.message_id)
+    await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    formatted_street = message.text.strip().lower().capitalize()
+    await OrderQueries.update_info(
+        telegram_id=message.from_user.id,
+        address_id=address_id,
+        column="street",
+        data=formatted_street,
+    )
+    address_data = await OrderQueries.get_user_address_data(
+        message.from_user.id, address_id
+    )
+    text_address = await text_address_data(address_data)
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=main_message_id,
+        text=f"{text_address}",
+        reply_markup=await OrderProcessing.kb_change_details(address_id),
+    )
+    temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
+    new_hint = await message.answer("🏠 *Введите Номер дома:*", parse_mode="Markdown")
+    await state.set_state(OrderForm.house)
+    await asyncio.sleep(1.5)
+    await temp_mess.delete()
+    await state.update_data(
+        last_hint_id=new_hint.message_id, user_messages=[], current_step="house"
+    )
+
+
+@processing.message(OrderForm.house)
+async def process_house(message: Message, state: FSMContext):
+    bot = message.bot
+    data = await state.get_data()
+    address_id = data["address_id"]
+    main_message_id = data["main_message_id"]
+    last_hint_id = data["last_hint_id"]
+    user_messages = data.get("user_messages", [])
+    user_messages.append(message.message_id)
+    await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    await OrderQueries.update_info(
+        telegram_id=message.from_user.id,
+        address_id=address_id,
+        column="house",
+        data=message.text,
+    )
+    address_data = await OrderQueries.get_user_address_data(
+        message.from_user.id, address_id
+    )
+    text_address = await text_address_data(address_data)
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=main_message_id,
+        text=f"{text_address}",
+        reply_markup=await OrderProcessing.kb_change_details(address_id),
+    )
+    temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
+    new_hint = await message.answer(
+        "🚪 *Введите Номер квартиры:*", parse_mode="Markdown"
+    )
+    await state.set_state(OrderForm.apartment)
+    await asyncio.sleep(1.5)
+    await temp_mess.delete()
+    await state.update_data(
+        last_hint_id=new_hint.message_id, user_messages=[], current_step="apartment"
+    )
 
 
 # @processing.message(OrderForm.phone)

@@ -82,13 +82,16 @@ async def text_address_data(order_data):
     phone = phone if phone else "Не указан"
     payment = payment if payment else "Не указан"
     comment = comment if comment else "Не указан"
-    if city and street and house is not None:
-        if apartment:
-            address = f"г.{city}, {street}, {house}, {apartment}кв."
-        else:
-            address = f"г.{city}, {street}, {house}"
-    else:
-        address = "Не указан"
+    address_parts = []
+    if city:
+        address_parts.append(f"г.{city}")
+    if street:
+        address_parts.append(f"ул.{street}")
+    if house:
+        address_parts.append(f"д.{house}")
+    if apartment:
+        address_parts.append(f"кв.{apartment}")
+    address = ", ".join(address_parts) if address_parts else "Не указан"
     return f"""
             📝 Текущие данные заказа: 
 

@@ -447,9 +447,8 @@ class OrderQueries:
                 )
                 .where(UserAddress.telegram_id == telegram_id)
                 .order_by(UserAddress.created_date.desc())
-                .limit(1)
             )
-            return addresses.scalars()
+            return addresses.mappings().all()
 
     @staticmethod
     async def add_address_get_id(telegram_id):

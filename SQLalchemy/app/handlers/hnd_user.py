@@ -4,9 +4,15 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.filters import CommandStart
 from keyboards.kb_user import UserKeyboards
 from text_templates import get_book_details, get_book_details_on_sale, INFOTEXT
-
+from aiogram.fsm.context import FSMContext
 
 user_router = Router()
+
+
+async def delete_messages(bot, chat_id: int, message_ids: list):
+    for message_id in message_ids:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+
 
 GENRES = {
     "fantasy": "Фэнтази🚀",
@@ -19,7 +25,15 @@ GENRES = {
 
 
 @user_router.message(CommandStart())
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state:
+        data = await state.get_data()
+        last_hint_id = data["last_hint_id"]
+        if last_hint_id:
+            bot = message.bot
+            await delete_messages(bot, message.chat.id, [last_hint_id])
+        await state.clear()
     user_data = {
         "telegram_id": message.from_user.id,
         "username": message.from_user.username,
@@ -73,8 +87,16 @@ async def genre_search(callback: CallbackQuery):
 
 
 @user_router.callback_query(F.data == "cart")
-async def cart(callback: CallbackQuery):
+async def cart(callback: CallbackQuery, state: FSMContext):
     telegram_id = callback.from_user.id
+    current_state = await state.get_state()
+    if current_state:
+        data = await state.get_data()
+        last_hint_id = data["last_hint_id"]
+        if last_hint_id:
+            bot = callback.bot
+            await delete_messages(bot, callback.message.chat.id, [last_hint_id])
+        await state.clear()
     total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
     list_of_books = []
     for book_data in cart_data:

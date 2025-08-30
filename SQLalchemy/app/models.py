@@ -189,7 +189,7 @@ class UserAddress(Base):
         BigInteger, ForeignKey("users.telegram_id")
     )
     name: Mapped[str] = mapped_column(String, nullable=True)
-    phone: Mapped[str] = mapped_column(String(14), nullable=True)
+    phone: Mapped[str] = mapped_column(String(12), nullable=True)
     city: Mapped[str] = mapped_column(String, nullable=True)
     street: Mapped[str] = mapped_column(String, nullable=True)
     house: Mapped[str] = mapped_column(String, nullable=True)

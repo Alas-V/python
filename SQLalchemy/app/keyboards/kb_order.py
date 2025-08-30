@@ -86,13 +86,17 @@ class OrderProcessing:
     async def kb_choose_address(addresses) -> InlineKeyboardMarkup:
         keyboard = []
         for address in addresses:
-            if address["street"] is None or address["house"] is None:
-                street = address.get("street", "")
-                house = address.get("house", "")
-                city = address.get("city", "")
-                button_text = f"(Черновик){city} {street} {house}"
+            city = address.get("city", "") or ""
+            street = address.get("street", "") or ""
+            house = address.get("house", "") or ""
+            is_draft = not all([street, house])
+            if is_draft:
+                parts = [part for part in [city, street, house] if part]
+                address_text = " ".join(parts) if parts else "Пустой адрес"
+                button_text = f"📝 Черновик: {address_text}"
             else:
-                button_text = f"{address['street']}, {address['house']}"
+                parts = [part for part in [street, house, city] if part]
+                button_text = f"🏠 {', '.join(parts)}"
             keyboard.append(
                 [
                     InlineKeyboardButton(
@@ -113,4 +117,4 @@ class OrderProcessing:
         keyboard.append(
             [InlineKeyboardButton(text="🔙Назад", callback_data="cart")],
         )
-        return InlineKeyboardMarkup()
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
