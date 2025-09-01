@@ -13,27 +13,6 @@ import asyncio
 processing = Router()
 
 
-# @processing.callback_query(F.data == "new_address")
-# async def first_msg(callback: CallbackQuery, state: FSMContext):
-#     telegram_id = callback.from_user.id
-#     total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
-#     list_of_books = []
-#     for book_data in cart_data:
-#         books_inside = (
-#             f"\n📖{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽"
-#         )
-#         list_of_books.append(books_inside)
-#     user_balance = await UserQueries.get_user_balance(telegram_id)
-#     order_data = await OrderQueries.get_user_address_data(telegram_id)
-#     text = await order_data_structure(
-#         list_of_books, total_price, order_data, user_balance
-#     )
-#     await callback.message.edit_text(
-#         text, reply_markup=await OrderProcessing.kb_change_details()
-#     )
-#     await state.update_data(message_id=callback.message.message_id)
-
-
 async def delete_messages(bot, chat_id: int, message_ids: list):
     for message_id in message_ids:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -64,7 +43,8 @@ async def new_address(callback: CallbackQuery, state: FSMContext):
 
 @processing.callback_query(F.data.startswith("edit_address_"))
 async def edit_address(callback: CallbackQuery):
-    address_id = callback.data.split("_")[2]
+    address_id_str = callback.data.split("_")[2]
+    address_id = int(address_id_str)
     telegram_id = callback.from_user.id
     address_data = await OrderQueries.get_user_address_data(telegram_id, address_id)
     text = await text_address_data(address_data)
@@ -292,11 +272,40 @@ async def process_house(message: Message, state: FSMContext):
     )
 
 
-# @processing.message(OrderForm.phone)
-# async def info_phone(message: Message, state: FSMContext):
-#     telegram_id = message.from_user.id
-#     await state.update_data(last_bot_msg_id=message.message_id)
-#     await delete_user_message(message)
-#     await OrderQueries.update_info(telegram_id, "phone", message.text)
-#     await state.set_state(OrderForm.city)
-#     await edit_or_send_new(message, "🌎 Введите ваш город", state)
+@processing.message(OrderForm.apartment)
+async def process_apartment(message: Message, state: FSMContext):
+    bot = message.bot
+    data = await state.get_data()
+    address_id = data["address_id"]
+    main_message_id = data["main_message_id"]
+    last_hint_id = data["last_hint_id"]
+    user_messages = data.get("user_messages", [])
+    user_messages.append(message.message_id)
+    await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    await OrderQueries.update_info(
+        telegram_id=message.from_user.id,
+        address_id=address_id,
+        column="apartment",
+        data=message.text,
+    )
+    address_data = await OrderQueries.get_user_address_data(
+        message.from_user.id, address_id
+    )
+    text_address = await text_address_data(address_data)
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=main_message_id,
+        text=f"{text_address}",
+        reply_markup=await OrderProcessing.kb_change_details(address_id),
+    )
+    temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
+    new_hint = await message.answer(
+        "✅*Все данные успешно заполнены\nПо желанию вы можете оставить комментарий для курьера*",
+        parse_mode="Markdown",
+    )
+    await state.set_state(OrderForm.apartment)
+    await asyncio.sleep(1.5)
+    await temp_mess.delete()
+    await state.update_data(
+        last_hint_id=new_hint.message_id, user_messages=[], current_step="comment"
+    )
