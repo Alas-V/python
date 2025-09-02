@@ -398,10 +398,13 @@ class OrderQueries:
                 .values({column: data})
             )
             await session.commit()
-            return
+            is_complete = await OrderQueries.check_address_completion(
+                address_id=int(address_id)
+            )
+            return is_complete
 
     @staticmethod
-    async def get_user_address_data(telegram_id, address_id):
+    async def get_user_address_data(telegram_id, address_id: int):
         async with AsyncSessionLocal() as session:
             order_data = await session.execute(
                 select(
@@ -413,6 +416,7 @@ class OrderQueries:
                     UserAddress.apartment,
                     UserAddress.payment,
                     UserAddress.comment,
+                    UserAddress.is_complete,
                 ).where(
                     and_(
                         UserAddress.telegram_id == telegram_id,
@@ -423,6 +427,33 @@ class OrderQueries:
             return order_data.first()
 
     @staticmethod
+    async def check_address_completion(address_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    UserAddress.name,
+                    UserAddress.phone,
+                    UserAddress.city,
+                    UserAddress.street,
+                    UserAddress.house,
+                    UserAddress.is_complete,
+                ).where(UserAddress.address_id == address_id)
+            )
+            data = result.first()
+            if not data:
+                return False
+            name, phone, city, street, house, current_status = data
+            is_complete = all([name, phone, city, street, house])
+            if current_status != is_complete:
+                await session.execute(
+                    update(UserAddress)
+                    .where(UserAddress.address_id == address_id)
+                    .values(is_complete=is_complete)
+                )
+                await session.commit()
+            return is_complete
+
+    @staticmethod
     async def has_address(telegram_id):
         async with AsyncSessionLocal() as session:
             has_address = await session.execute(
@@ -430,7 +461,7 @@ class OrderQueries:
                     UserAddress.telegram_id == telegram_id
                 )
             )
-            address = has_address.scalar_one_or_none()
+            address = has_address.first()
             if address:
                 return True
             return False
@@ -463,6 +494,7 @@ class OrderQueries:
                 apartment=None,
                 payment=None,
                 comment=None,
+                is_complete=False,
             )
             session.add(new_address)
             await session.flush()

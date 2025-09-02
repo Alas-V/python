@@ -196,6 +196,7 @@ class UserAddress(Base):
     apartment: Mapped[str] = mapped_column(String, nullable=True)
     payment: Mapped[Payment] = mapped_column(String, nullable=True)
     comment: Mapped[str] = mapped_column(String, nullable=True)
+    is_complete: Mapped[bool] = mapped_column(Boolean, server_default=text("FALSE"))
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
     user: Mapped["User"] = relationship(back_populates="address")

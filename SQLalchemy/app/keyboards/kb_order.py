@@ -69,18 +69,34 @@ class OrderProcessing:
         )
 
     @staticmethod
-    async def kb_change_details(address_id) -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
+    async def kb_change_details(
+        address_id, is_complete: bool = False
+    ) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="Добавит или изменить данные",
+                    callback_data=f"what_to_change_{address_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(text="🔙Назад", callback_data="cart"),
+                InlineKeyboardButton(
+                    text="❌Удалить адрес", callback_data=f"delete_address_{address_id}"
+                ),
+            ],
+        ]
+        if is_complete:
+            keyboard.insert(
+                0,
                 [
                     InlineKeyboardButton(
-                        text="Добавит или изменить данные",
-                        callback_data=f"what_to_change_{address_id}",
+                        text="✅Выбрать этот адрес и продолжить",
+                        callback_data=f"complete_address_{address_id}",
                     )
                 ],
-                [InlineKeyboardButton(text="🔙Назад", callback_data="cart")],
-            ]
-        )
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
     async def kb_choose_address(addresses) -> InlineKeyboardMarkup:
@@ -118,3 +134,16 @@ class OrderProcessing:
             [InlineKeyboardButton(text="🔙Назад", callback_data="cart")],
         )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def kb_skip_state() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🚪Нет номера квартиры",
+                        callback_data="skip_state",
+                    )
+                ]
+            ]
+        )
