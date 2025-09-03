@@ -19,23 +19,6 @@ class UserKeyboards:
             ]
         )
 
-    # useless cause wont do the search_by_author
-    # @staticmethod
-    # async def catalog_menu() -> InlineKeyboardMarkup:
-    #     return InlineKeyboardMarkup(
-    #         inline_keyboard=[
-    #             [
-    #                 InlineKeyboardButton(
-    #                     text="👤Поиск по автору", callback_data="search_by_author"
-    #                 ),
-    #                 InlineKeyboardButton(
-    #                     text="📖Поиск по жанру", callback_data="search_by_genre"
-    #                 ),
-    #             ],
-    #             [InlineKeyboardButton(text="🔙Меню", callback_data="main_menu")],
-    #         ]
-    #     )
-
     @staticmethod
     async def show_genre() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
@@ -185,6 +168,7 @@ class UserKeyboards:
                         text="🔙Главное меню", callback_data="main_menu"
                     )
                 ],
+                [InlineKeyboardButton(text="🛒Корзина", callback_data="cart")],
             ]
         )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)

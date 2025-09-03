@@ -361,28 +361,15 @@ class OrderQueries:
                 return True, telegram_id
             return False, telegram_id
 
-    # @staticmethod
-    # async def check_info_if_exist(telegram_id):
-    #     async with AsyncSessionLocal() as session:
-    #         info = await session.execute(
-    #             select(UserAddress).where(telegram_id == telegram_id)
-    #         )
-    #         info = info.scalar_one_or_none()
-    #         if not info:
-    #             order_info = UserAddress(
-    #                 name=None,
-    #                 phone=None,
-    #                 city=None,
-    #                 street=None,
-    #                 house=None,
-    #                 apartment=None,
-    #                 payment=None,
-    #                 comment=None,
-    #                 telegram_id=telegram_id,
-    #             )
-    #             session.add(order_info)
-    #             await session.commit()
-    #         return
+    @staticmethod
+    async def delete_address_orm(address_id):
+        async with AsyncSessionLocal() as session:
+            address = await session.scalar(
+                select(UserAddress).where(UserAddress.address_id == address_id)
+            )
+            await session.delete(address)
+            await session.commit()
+            return True
 
     @staticmethod
     async def update_info(telegram_id, address_id, column, data):
@@ -425,6 +412,26 @@ class OrderQueries:
                 )
             )
             return order_data.first()
+
+    @staticmethod
+    async def get_next_empty_field(address_id: int, telegram_id: int) -> str:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(UserAddress).where(UserAddress.address_id == address_id)
+            )
+            address = result.scalar_one()
+            if address.name is None:
+                return "name"
+            elif address.phone is None:
+                return "phone"
+            elif address.city is None:
+                return "city"
+            elif address.street is None:
+                return "street"
+            elif address.house is None:
+                return "house"
+            else:
+                return None
 
     @staticmethod
     async def check_address_completion(address_id: int) -> bool:

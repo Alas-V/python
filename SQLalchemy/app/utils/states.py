@@ -11,3 +11,4 @@ class OrderForm(StatesGroup):
     delivery_date = State()
     payment = State()
     comment = State()
+    editing_field = State()

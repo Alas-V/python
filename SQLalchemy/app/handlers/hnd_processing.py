@@ -52,7 +52,7 @@ async def skip_state(callback: CallbackQuery, state: FSMContext):
     current_state = await state.get_state()
     if current_state:
         data = await state.get_data()
-        last_hint_id = data["last_hint_id"]
+        last_hint_id = data.get("last_hint_id")
         if last_hint_id:
             bot = callback.bot
             await delete_messages(bot, callback.message.chat.id, [last_hint_id])
@@ -62,17 +62,49 @@ async def skip_state(callback: CallbackQuery, state: FSMContext):
 
 
 @processing.callback_query(F.data.startswith("edit_address_"))
-async def edit_address(callback: CallbackQuery):
+async def edit_address(callback: CallbackQuery, state: FSMContext):
     address_id_str = callback.data.split("_")[2]
     address_id = int(address_id_str)
     telegram_id = callback.from_user.id
     address_data = await OrderQueries.get_user_address_data(telegram_id, address_id)
     text = await text_address_data(address_data)
     is_complete = await OrderQueries.check_address_completion(address_id)
+    if not is_complete:
+        next_field = await OrderQueries.get_next_empty_field(address_id, telegram_id)
+        await state.update_data(
+            address_id=address_id,
+            current_step=next_field,
+            main_message_id=callback.message.message_id,
+        )
+        field_to_state = {
+            "name": OrderForm.name,
+            "phone": OrderForm.phone,
+            "city": OrderForm.city,
+            "street": OrderForm.street,
+            "house": OrderForm.house,
+            "apartment": OrderForm.apartment,
+            "payment": OrderForm.payment,
+            "comment": OrderForm.comment,
+        }
+        await state.set_state(field_to_state[next_field])
+        prompts = {
+            "name": "👤 Введите ваше имя:",
+            "phone": "📞 Введите ваш телефон:",
+            "city": "🏙️ Введите город:",
+            "street": "🛣️ Введите улицу:",
+            "house": "🏠 Введите номер дома:",
+            "apartment": "🚪 Введите номер квартиры:",
+            "payment": "💳 Выберите способ оплаты:",
+            "comment": "💭 Введите комментарий:",
+        }
+        hint = await callback.message.answer(prompts[next_field])
+        await state.update_data(last_hint_id=hint.message_id)
+        await callback.answer()
     await callback.message.edit_text(
         text,
         reply_markup=await OrderProcessing.kb_change_details(address_id, is_complete),
     )
+    await callback.answer()
 
 
 @processing.callback_query(F.data == "choose_address")
@@ -86,26 +118,122 @@ async def choose_address(callback: CallbackQuery):
 
 
 @processing.callback_query(F.data.startswith("what_to_change_"))
-async def choose_change(callback: CallbackQuery):
-    address_id = callback.data.split("_")[3]
+async def choose_change(callback: CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state:
+        data = await state.get_data()
+        last_hint_id = data.get("last_hint_id")
+        if last_hint_id:
+            bot = callback.bot
+            await delete_messages(bot, callback.message.chat.id, [last_hint_id])
+        await state.clear()
+    address_str = callback.data.split("_")[3]
+    address_id = int(address_str)
+    telegram_id = callback.from_user.id
+    address_data = await OrderQueries.get_user_address_data(telegram_id, address_id)
+    address_text = await text_address_data(address_data)
+    address_text += "✏️Выберите что вы хотите изменить или добавить"
+    is_complete = await OrderQueries.check_address_completion(address_id)
     await callback.message.edit_text(
-        "✏️Выберите что вы хотите изменить или добавить",
-        reply_markup=await OrderProcessing.order_details(address_id),
+        address_text,
+        reply_markup=await OrderProcessing.order_details(address_id, is_complete),
     )
 
 
 @processing.callback_query(F.data.startswith("change_"))
 async def change_details(callback: CallbackQuery, state: FSMContext):
     column = callback.data.split("_")[1]
+    address_str = callback.data.split("_")[2]
+    address_id = int(address_str)
+    telegram_id = callback.from_user.id
+    address_data = await OrderQueries.get_user_address_data(telegram_id, address_id)
+    address_text = await text_address_data(address_data)
+    address_text += "✏️Выберите что вы хотите изменить или добавить"
+    await state.update_data(
+        address_id=address_id,
+        editing_column=column,
+        message_id=callback.message.message_id,
+    )
+    await state.set_state(OrderForm.editing_field)
+    prompts = {
+        "name": "👤 Введите ваше имя:",
+        "phone": "📞 Введите ваш телефон:",
+        "city": "🗺️s Введите город:",
+        "street": "🛣️ Введите улицу:",
+        "house": "🏠 Введите номер дома:",
+        "apartment": "🚪 Введите номер квартиры:",
+        "payment": "💳 Выберите способ оплаты:",
+        "comment": "💭 Введите комментарий:",
+    }
+    hint = await callback.message.answer(prompts[column])
+    await state.update_data(last_hint_id=hint.message_id, user_messages=[])
+    await callback.answer()
+
+
+@processing.callback_query(F.data.startswith("delete_address_"))
+async def ps_delete_address(callback: CallbackQuery):
     address_id = callback.data.split("_")[2]
-    if column == "address":
-        await callback.message.edit_text(
-            "✏️Выберите что вы хотите изменить или добавить",
-            reply_markup=await OrderProcessing.kb_address_change(address_id),
-        )
+    await callback.message.edit_text(
+        "Вы уверены что хотите удалить адрес доставки ?",
+        reply_markup=await OrderProcessing.kb_delete_address(address_id),
+    )
+
+
+@processing.callback_query(F.data.startswith("sure_delete_address_"))
+async def sure_delete_address(callback: CallbackQuery, state: FSMContext):
+    address_id = callback.data.split("_")[3]
+    current_state = await state.get_state()
+    if current_state:
+        data = await state.get_data()
+        last_hint_id = data.get("last_hint_id")
+        if last_hint_id:
+            bot = callback.bot
+            await delete_messages(bot, callback.message.chat.id, [last_hint_id])
+        await state.clear()
+    address_int = int(address_id)
+    await OrderQueries.delete_address_orm(address_int)
+    await callback.message.edit_text(
+        "✅Адрес успешно удален", reply_markup=await OrderProcessing.kb_after_delete()
+    )
 
 
 # FMScontext hnd
+
+
+@processing.message(OrderForm.editing_field)
+async def process_editing_field(message: Message, state: FSMContext):
+    bot = message.bot
+    data = await state.get_data()
+    address_id = data["address_id"]
+    column = data["editing_column"]
+    main_message_id = data["message_id"]
+    last_hint_id = data.get("last_hint_id")
+    user_messages = data.get("user_messages", [])
+    user_messages.append(message.message_id)
+    if last_hint_id:
+        await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    formatted_data = message.text.strip()
+    if column in ["name", "city", "street"]:
+        formatted_data = message.text.strip().lower().capitalize()
+    await OrderQueries.update_info(
+        message.from_user.id, address_id, column, formatted_data
+    )
+    is_complete = await OrderQueries.check_address_completion(address_id)
+    address_data = await OrderQueries.get_user_address_data(
+        message.from_user.id, address_id
+    )
+    text = await text_address_data(address_data)
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=main_message_id,
+        text=f"{text}",
+        reply_markup=await OrderProcessing.order_details(address_id, is_complete),
+        parse_mode="Markdown",
+    )
+    temp_msg = await message.answer("✅ Данные обновлены")
+    await asyncio.sleep(1)
+    await temp_msg.delete()
+    await state.clear()
 
 
 @processing.message(OrderForm.name)
@@ -114,7 +242,7 @@ async def process_name(message: Message, state: FSMContext):
     data = await state.get_data()
     address_id = data["address_id"]
     main_message_id = data["main_message_id"]
-    last_hint_id = data["last_hint_id"]
+    last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
@@ -152,7 +280,7 @@ async def process_phone(message: Message, state: FSMContext):
     data = await state.get_data()
     address_id = data["address_id"]
     main_message_id = data["main_message_id"]
-    last_hint_id = data["last_hint_id"]
+    last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
@@ -188,7 +316,7 @@ async def process_city(message: Message, state: FSMContext):
     data = await state.get_data()
     address_id = data["address_id"]
     main_message_id = data["main_message_id"]
-    last_hint_id = data["last_hint_id"]
+    last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
@@ -225,7 +353,7 @@ async def process_street(message: Message, state: FSMContext):
     data = await state.get_data()
     address_id = data["address_id"]
     main_message_id = data["main_message_id"]
-    last_hint_id = data["last_hint_id"]
+    last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
@@ -262,7 +390,7 @@ async def process_house(message: Message, state: FSMContext):
     data = await state.get_data()
     address_id = data["address_id"]
     main_message_id = data["main_message_id"]
-    last_hint_id = data["last_hint_id"]
+    last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
@@ -302,7 +430,7 @@ async def process_apartment(message: Message, state: FSMContext):
     data = await state.get_data()
     address_id = data["address_id"]
     main_message_id = data["main_message_id"]
-    last_hint_id = data["last_hint_id"]
+    last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
