@@ -3,6 +3,8 @@ from sqlalchemy import URL
 
 TOKEN = "8205935139:AAGbVZYlX_feEfkvCsH-jIAJxPZDmZmYgsk"
 
+ADMIN_ID = 717149416
+
 
 class Settings(BaseSettings):
     DB_HOST: str
@@ -37,4 +39,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

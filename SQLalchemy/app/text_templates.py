@@ -74,13 +74,12 @@ async def order_data_structure(list_of_books, total_price, order_data, user_bala
 
 
 async def text_address_data(order_data):
-    defaults = (None,) * 9
-    name, phone, city, street, house, apartment, payment, comment, is_complete = (
+    defaults = (None,) * 8
+    name, phone, city, street, house, apartment, comment, is_complete = (
         order_data if order_data else defaults
     )
     name = name if name else "Не указано"
     phone = phone if phone else "Не указан"
-    payment = payment if payment else "Не указан"
     address_parts = []
     if city:
         address_parts.append(f"г.{city}")
@@ -92,21 +91,20 @@ async def text_address_data(order_data):
         address_parts.append(f"кв.{apartment}")
     address = ", ".join(address_parts) if address_parts else "Не указан"
     if is_complete:
-        completed_text = "✅ Все необходимые данные заполнены! "
+        completed_text = "  🚚 Данные доставки"
     else:
-        completed_text = "📝 Заполните все необходимые данные адреса доставки"
+        completed_text = "📝 Заполните все необходимые данные доставки"
     if comment:
         comment_text = f"💭 Комментарий: {comment}"
     else:
         comment_text = ""
     return f""" 
 
-    {completed_text}
+        {completed_text}
 
 👤 Имя: {name}
 📞 Номер телефона: {phone}
 🏠 Адрес: {address}
-💳 Способ оплаты: {payment}
 {comment_text}
 """
 

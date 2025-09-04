@@ -1,13 +1,14 @@
-from aiogram import Router, F
+from aiogram import Bot, Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 from utils.states import OrderForm
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
-from queries.orm import OrderQueries, UserQueries
+from queries.orm import OrderQueries, UserQueries, BookQueries
 from text_templates import order_data_structure, text_address_data
 from aiogram.fsm.context import FSMContext
 from keyboards.kb_order import OrderProcessing
+from config import ADMIN_ID
 import asyncio
 
 processing = Router()
@@ -15,7 +16,54 @@ processing = Router()
 
 async def delete_messages(bot, chat_id: int, message_ids: list):
     for message_id in message_ids:
-        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            if "message to delete not found" not in str(e):
+                print(f"Ошибка удаления сообщения {message_id}: {e}")
+
+
+async def format_address(address_data) -> str:
+    if not address_data:
+        return "Не указан"
+    parts = []
+    if address_data.city:
+        parts.append(f"г.{address_data.city}")
+    if address_data.street:
+        parts.append(f"ул.{address_data.street}")
+    if address_data.house:
+        parts.append(f"д.{address_data.house}")
+    if address_data.apartment:
+        parts.append(f"кв.{address_data.apartment}")
+    return ", ".join(parts) if parts else "Не указан"
+
+
+async def format_products(cart_data) -> str:
+    products = []
+    for item in cart_data:
+        product_text = f"{item['book']} × {item['quantity']}шт. - {item['price']}₽"
+        products.append(product_text)
+    return "\n".join(products) if products else "Нет товаров"
+
+
+async def send_order_notification(bot: Bot, order_data: dict):
+    message_text = (
+        "🛒 *НОВЫЙ ЗАКАЗ!*\n\n"
+        f"👤 *Клиент:* {order_data['user_name']}\n"
+        f"📞 *Телефон:* {order_data['user_phone']}\n"
+        f"👤 *TG:* @{order_data['username']} (ID: {order_data['user_id']})\n"
+        f"🏠 *Адрес:* {order_data['address']}\n"
+        f"📦 *Товары:*\n{order_data['products']}\n"
+        f"💰 *Сумма:* {order_data['total_price']}₽\n"
+        f"💬 *Комментарий:* {order_data['comment']}"
+    )
+
+    try:
+        await bot.send_message(
+            chat_id=ADMIN_ID, text=message_text, parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Ошибка отправки уведомления: {e}")
 
 
 @processing.callback_query(F.data == "new_address")
@@ -197,6 +245,118 @@ async def sure_delete_address(callback: CallbackQuery, state: FSMContext):
     )
 
 
+@processing.callback_query(F.data.startswith("complete_address_"))
+async def done_address(callback: CallbackQuery, state: FSMContext):
+    address_str = callback.data.split("_")[2]
+    address_id = int(address_str)
+    telegram_id = callback.from_user.id
+    address_data = await OrderQueries.get_user_address_data(telegram_id, address_id)
+    address_text = await text_address_data(address_data)
+    current_state = await state.get_state()
+    if current_state:
+        data = await state.get_data()
+        last_hint_id = data.get("last_hint_id")
+        if last_hint_id:
+            bot = callback.bot
+            await delete_messages(bot, callback.message.chat.id, [last_hint_id])
+        await state.clear()
+    total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
+    price = int(total_price)
+    list_of_books = []
+    for book_data in cart_data:
+        books_inside = (
+            f"\n📖{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽"
+        )
+        list_of_books.append(books_inside)
+    user_balance = await UserQueries.get_user_balance(telegram_id)
+    balance = int(user_balance)
+    text = f"    🛒Корзина\n{''.join(list_of_books)}\n\n💳 Ваш баланс - {user_balance}₽\n💵 Сумма корзины -  {total_price}₽"
+    text += address_text
+    remainder = balance - price
+    if remainder >= 0:
+        await callback.message.edit_text(
+            text,
+            reply_markup=await OrderProcessing.kb_confirm_order(
+                remainder,
+                address_id,
+            ),
+        )
+    else:
+        text += f"\n❗На балансе недостаточно({-remainder}₽) средств для покупки"
+        await callback.message.edit_text(
+            text,
+            reply_markup=await OrderProcessing.kb_confirm_order(
+                remainder,
+                address_id,
+            ),
+        )
+
+
+@processing.callback_query(F.data.startswith("new_order_done_"))
+async def new_order_done(callback: CallbackQuery, bot: Bot):
+    wait_msg = await callback.message.answer("Обработка заказа ⏳")
+    address_str = callback.data.split("_")[3]
+    address_id = int(address_str)
+    telegram_id = callback.from_user.id
+    address_data = await OrderQueries.get_user_address_data(telegram_id, address_id)
+    # address_text = await text_address_data(address_data)
+    total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
+    price = int(total_price)
+    # list_of_books = []
+    # for book_data in cart_data:
+    #     books_inside = (
+    #         f"\n📖{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽"
+    #     )
+    #     list_of_books.append(books_inside)
+    user_balance = await UserQueries.get_user_balance(telegram_id)
+    balance = int(user_balance)
+    # text = f"    🛒Корзина\n{''.join(list_of_books)}\n\n💳 Ваш баланс - {user_balance}₽\n💵 Сумма корзины -  {total_price}₽"
+    # text += address_text
+    remainder = balance - price
+    if remainder >= 0:
+        all_available, insufficient_books = await BookQueries.check_books_availability(
+            cart_data
+        )
+        if all_available:
+            order_data = {
+                "user_name": address_data.name if address_data else "Не указано",
+                "user_phone": address_data.phone if address_data else "Не указан",
+                "address": await format_address(address_data),
+                "payment": address_data.payment if address_data else "Не указан",
+                "products": await format_products(cart_data),
+                "total_price": total_price,
+                "comment": address_data.comment if address_data else "Нет комментария",
+                "user_id": telegram_id,
+                "username": callback.from_user.username or "Не указан",
+            }
+            await BookQueries.decrease_book_value(cart_data)
+            await UserQueries.updata_user_balance(telegram_id, -remainder)
+            await send_order_notification(Bot, order_data)
+            await wait_msg.delete()
+            await callback.message.edit_text(
+                text="🎊 Заказ оформлен!\nВ Ближайшее время с вам свяжется менеджер для согласования даты доставки",
+                reply_markup=await OrderProcessing.kb_order_last_step(
+                    remainder, all_available, address_id
+                ),
+            )
+        else:
+            await wait_msg.delete()
+            await callback.message.edit_text(
+                text=f"❌ Произошла Ошибка, у нас не хватает книг\n\n{''.join(insufficient_books)}\n\nПожалуйста, вернитесь в главное корзину и повторите попытку.",
+                reply_markup=await OrderProcessing.kb_order_last_step(
+                    remainder, all_available, address_id
+                ),
+            )
+    else:
+        await wait_msg.delete()
+        await callback.message.edit_text(
+            text=f"❌ На вашем балансе не хватает {-remainder}₽ для заказа",
+            reply_markup=await OrderProcessing.kb_order_last_step(
+                remainder, all_available, address_id
+            ),
+        )
+
+
 # FMScontext hnd
 
 
@@ -267,7 +427,7 @@ async def process_name(message: Message, state: FSMContext):
     temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
     new_hint = await message.answer("📞 *Введите телефон:*", parse_mode="Markdown")
     await state.set_state(OrderForm.phone)
-    await asyncio.sleep(1.3)
+    await asyncio.sleep(1)
     await temp_mess.delete()
     await state.update_data(
         last_hint_id=new_hint.message_id, user_messages=[], current_step="phone"
@@ -303,7 +463,7 @@ async def process_phone(message: Message, state: FSMContext):
     temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
     new_hint = await message.answer("🗺️ *Введите Город:*", parse_mode="Markdown")
     await state.set_state(OrderForm.city)
-    await asyncio.sleep(1.3)
+    await asyncio.sleep(1)
     await temp_mess.delete()
     await state.update_data(
         last_hint_id=new_hint.message_id, user_messages=[], current_step="city"
@@ -340,7 +500,7 @@ async def process_city(message: Message, state: FSMContext):
     temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
     new_hint = await message.answer("🛣️ *Введите Улицу:*", parse_mode="Markdown")
     await state.set_state(OrderForm.street)
-    await asyncio.sleep(1.3)
+    await asyncio.sleep(1)
     await temp_mess.delete()
     await state.update_data(
         last_hint_id=new_hint.message_id, user_messages=[], current_step="street"
@@ -453,5 +613,5 @@ async def process_apartment(message: Message, state: FSMContext):
     )
     temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
     await state.clear()
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(1)
     await temp_mess.delete()

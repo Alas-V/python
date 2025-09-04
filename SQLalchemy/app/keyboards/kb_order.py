@@ -65,7 +65,7 @@ class OrderProcessing:
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="Добавит или изменить данные",
+                    text="➕ Добавить или изменить данные",
                     callback_data=f"what_to_change_{address_id}",
                 )
             ],
@@ -93,7 +93,7 @@ class OrderProcessing:
                 [
                     InlineKeyboardButton(
                         text="💭 Комментарий к заказу",
-                        callback_data=f"change_comment{address_id}",
+                        callback_data=f"change_comment_{address_id}",
                     )
                 ],
             )
@@ -131,7 +131,7 @@ class OrderProcessing:
                 keyboard.append(
                     [
                         InlineKeyboardButton(
-                            text="➕ Добавит новый адрес", callback_data="new_address"
+                            text="➕ Добавить новый адрес", callback_data="new_address"
                         )
                     ]
                 ),
@@ -184,3 +184,69 @@ class OrderProcessing:
                 [InlineKeyboardButton(text="🔙 Назад", callback_data="choose_address")],
             ]
         )
+
+    @staticmethod
+    async def kb_confirm_order(remainder, address_id) -> InlineKeyboardMarkup:
+        keyboard = []
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад", callback_data=f"complete_address_{address_id}"
+                )
+            ]
+        )
+        if remainder >= 0:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="✅ Подтвердить заказ",
+                        callback_data=f"new_order_done_{address_id}",
+                    )
+                ],
+            )
+        if remainder < 0:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text=f"💳 Пополнить баланс {-remainder}₽",
+                        callback_data=f"replenish_balance_{address_id}",
+                    )
+                ],
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def kb_order_last_step(
+        remainder, all_available, address_id
+    ) -> InlineKeyboardMarkup:
+        keyboard = []
+        keyboard.append(
+            [InlineKeyboardButton(text="📨 Поддержка", callback_data="support")]
+        )
+        keyboard.append(
+            [InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu")]
+        )
+        if remainder >= 0:
+            if all_available:
+                keyboard.insert(
+                    0,
+                    InlineKeyboardButton(
+                        text="📦 Мои заказы", callback_data="confirmed_orders"
+                    ),
+                )
+            else:
+                keyboard.insert(
+                    0, InlineKeyboardButton(text="🛒Корзина", callback_data="cart")
+                )
+        else:
+            keyboard.insert(
+                0,
+                InlineKeyboardButton(
+                    text=f"💳 Пополнить баланс {-remainder}₽",
+                    callback_data=f"replenish_balance_{address_id}",
+                ),
+            )
+
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)

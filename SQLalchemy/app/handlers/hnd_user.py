@@ -86,6 +86,12 @@ async def genre_search(callback: CallbackQuery):
     )
 
 
+# TODO
+@user_router.callback_query(F.data == "confirmed_orders")
+async def check_my_orders(callback: CallbackQuery):
+    pass
+
+
 @user_router.callback_query(F.data == "cart")
 async def cart(callback: CallbackQuery, state: FSMContext):
     telegram_id = callback.from_user.id
@@ -101,7 +107,7 @@ async def cart(callback: CallbackQuery, state: FSMContext):
     list_of_books = []
     for book_data in cart_data:
         books_inside = (
-            f"\n{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽"
+            f"\n📖{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽"
         )
         list_of_books.append(books_inside)
     user_balance = await UserQueries.get_user_balance(telegram_id)
@@ -110,7 +116,7 @@ async def cart(callback: CallbackQuery, state: FSMContext):
         has_address = await OrderQueries.has_address(telegram_id)
         if has_address:
             await callback.message.edit_text(
-                f"    🛒Корзина\n📖{''.join(list_of_books)}\n\nВаш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
+                f"    🛒Корзина\n{''.join(list_of_books)}\n\n💳 Ваш баланс - {user_balance}₽\n💵 Сумма корзины -  {total_price}₽",
                 reply_markup=await UserKeyboards.in_cart_has_address(telegram_id),
             )
         else:

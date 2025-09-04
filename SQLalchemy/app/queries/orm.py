@@ -13,7 +13,7 @@ from models import (
 from faker import Faker
 import random
 from datetime import datetime, timedelta
-from sqlalchemy import select, text, func, and_, update
+from sqlalchemy import case, select, text, func, and_, update
 
 
 fake = Faker("ru_RU")
@@ -174,6 +174,54 @@ class BookQueries:
             result = await session.execute(query)
             return result.mappings().first()
 
+    @staticmethod
+    async def decrease_book_value(book_data):
+        async with AsyncSessionLocal() as session:
+            case_statements = []
+            for book in book_data:
+                book_id = book.get("book_id")
+                quantity_to_decrease = book.get("book_quantity")
+                case_statements.append(
+                    (Book.book_id == book_id, Book.quantity - quantity_to_decrease)
+                )
+            case_statements.append((None, Book.quantity))
+            await session.execute(
+                update(Book)
+                .values(quantity=case(*case_statements, value=Book.book_id))
+                .where(Book.book_id.in_([book["book_id"] for book in book_data]))
+            )
+            await session.commit()
+
+    @staticmethod
+    async def check_books_availability(book_data) -> tuple[bool, list]:
+        async with AsyncSessionLocal() as session:
+            book_ids = [book["book_id"] for book in book_data]
+            result = await session.execute(
+                select(Book.book_id, Book.quantity, Book.title).where(
+                    Book.book_id.in_(book_ids)
+                )
+            )
+            books_in_db = result.all()
+            db_books_map = {
+                book_id: (quantity, title) for book_id, quantity, title in books_in_db
+            }
+            insufficient_books = []
+            all_available = True
+            for book in book_data:
+                book_id = book["book_id"]
+                required_quantity = book["book_quantity"]
+                if book_id not in db_books_map:
+                    insufficient_books.append(f"❌ Книга ID {book_id} не найдена")
+                    all_available = False
+                    continue
+                current_quantity, title = db_books_map[book_id]
+                if current_quantity < required_quantity:
+                    insufficient_books.append(
+                        f"❌ {title}: нужно {required_quantity}, есть {current_quantity}"
+                    )
+                    all_available = False
+            return all_available, insufficient_books
+
 
 class SaleQueries:
     @staticmethod
@@ -266,6 +314,18 @@ class UserQueries:
             await session.refresh(user)
             return user
 
+    @staticmethod
+    async def updata_user_balance(telegram_id, value):
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                update(User)
+                .where(User.telegram_id == telegram_id)
+                .values(user_balance=value)
+            )
+            await session.execute(stmt)
+            await session.commit()
+            return True
+
 
 class OrderQueries:
     @staticmethod
@@ -339,6 +399,7 @@ class OrderQueries:
                 )
                 books_in_cart.append(
                     {
+                        "book_id": book_id,
                         "book": book_title,
                         "price": price,
                         "quantity": quantity,
@@ -401,7 +462,6 @@ class OrderQueries:
                     UserAddress.street,
                     UserAddress.house,
                     UserAddress.apartment,
-                    UserAddress.payment,
                     UserAddress.comment,
                     UserAddress.is_complete,
                 ).where(

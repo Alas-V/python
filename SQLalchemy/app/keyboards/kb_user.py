@@ -7,6 +7,11 @@ class UserKeyboards:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
+                    InlineKeyboardButton(
+                        text="📦Мои заказы", callback_data="confirmed_orders"
+                    )
+                ],
+                [
                     InlineKeyboardButton(text="🛒Корзина", callback_data="cart"),
                     InlineKeyboardButton(text="📚Каталог", callback_data="catalog"),
                 ],
@@ -15,6 +20,7 @@ class UserKeyboards:
                         text="🔥 Товары со скидкой", callback_data="sale_menu"
                     )
                 ],
+                [InlineKeyboardButton(text="📨 Поддержка", callback_data="support")],
                 [InlineKeyboardButton(text="ℹ️Информация", callback_data="information")],
             ]
         )
@@ -163,12 +169,12 @@ class UserKeyboards:
                         callback_data=f"genre_{book_genre}",
                     )
                 ],
+                [InlineKeyboardButton(text="🛒Корзина", callback_data="cart")],
                 [
                     InlineKeyboardButton(
                         text="🔙Главное меню", callback_data="main_menu"
                     )
                 ],
-                [InlineKeyboardButton(text="🛒Корзина", callback_data="cart")],
             ]
         )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
