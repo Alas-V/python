@@ -109,6 +109,24 @@ async def text_address_data(order_data):
 """
 
 
+async def format_order_details(order_details: dict) -> str:
+    return f"""
+📦 *Заказ #{order_details["order_id"]}*
+
+💰 *Сумма:* {order_details["total_price"]}₽
+📋 *Статус:* {order_details["status"]}
+📅 *Дата:* {order_details["created_date"].strftime("%d.%m.%Y %H:%M")}
+
+🚚 *Адрес доставки:*
+{order_details["address"]}
+
+🛒 *Товары:*
+{order_details["items"]}
+
+💭 *Комментарий:* {order_details["comment"] or "Нет"}
+"""
+
+
 INFOTEXT = """📚 BookStore Demo Bot
 Прототип книжного магазина с полным циклом заказа
 

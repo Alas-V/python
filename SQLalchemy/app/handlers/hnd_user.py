@@ -3,7 +3,12 @@ from queries.orm import OrderQueries, BookQueries, UserQueries, SaleQueries
 from aiogram.types import CallbackQuery, Message
 from aiogram.filters import CommandStart
 from keyboards.kb_user import UserKeyboards
-from text_templates import get_book_details, get_book_details_on_sale, INFOTEXT
+from text_templates import (
+    get_book_details,
+    get_book_details_on_sale,
+    format_order_details,
+    INFOTEXT,
+)
 from aiogram.fsm.context import FSMContext
 
 user_router = Router()
@@ -87,9 +92,56 @@ async def genre_search(callback: CallbackQuery):
 
 
 # TODO
-@user_router.callback_query(F.data == "confirmed_orders")
+@user_router.callback_query(F.data == "my_orders")
 async def check_my_orders(callback: CallbackQuery):
-    pass
+    telegram_id = callback.from_user.id
+    orders_count = await OrderQueries.get_user_orders_count(telegram_id)
+    if orders_count == 0:
+        await callback.message.edit_text(
+            "📦 У вас пока нет заказов",
+            reply_markup=await UserKeyboards.kb_no_my_orders(),
+        )
+        return
+    await callback.message.edit_text(
+        f"📦 Ваши заказы ({orders_count} шт.):",
+        reply_markup=await UserKeyboards.kb_my_orders(telegram_id),
+    )
+    await callback.answer()
+
+
+@user_router.callback_query(F.data.startswith("orders_"))
+async def orders_pagination(callback: CallbackQuery):
+    telegram_id = callback.from_user.id
+    if callback.data.startswith("orders_prev_"):
+        parts = callback.data.split("_")
+        offset = int(parts[2])
+        limit = int(parts[3])
+    elif callback.data.startswith("orders_next_"):
+        parts = callback.data.split("_")
+        offset = int(parts[2])
+        limit = int(parts[3])
+    await callback.message.edit_text(
+        "📦 Ваши заказы:",
+        reply_markup=await UserKeyboards.kb_my_orders(telegram_id, offset, limit),
+    )
+    await callback.answer()
+
+
+@user_router.callback_query(F.data.startswith("order_detail_"))
+async def order_detail(callback: CallbackQuery):
+    order_id = int(callback.data.split("_")[2])
+    telegram_id = callback.from_user.id
+    order_details = await OrderQueries.get_order_details(order_id, telegram_id)
+    if not order_details:
+        await callback.answer("Заказ не найден")
+        return
+    text = await format_order_details(order_details)
+    await callback.message.edit_text(
+        text,
+        reply_markup=await UserKeyboards.kb_order_detail(order_id),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
 
 
 @user_router.callback_query(F.data == "cart")

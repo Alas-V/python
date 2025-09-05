@@ -188,13 +188,7 @@ class OrderProcessing:
     @staticmethod
     async def kb_confirm_order(remainder, address_id) -> InlineKeyboardMarkup:
         keyboard = []
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    text="🔙 Назад", callback_data=f"complete_address_{address_id}"
-                )
-            ]
-        )
+        keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="cart")])
         if remainder >= 0:
             keyboard.insert(
                 0,
@@ -232,21 +226,24 @@ class OrderProcessing:
             if all_available:
                 keyboard.insert(
                     0,
-                    InlineKeyboardButton(
-                        text="📦 Мои заказы", callback_data="confirmed_orders"
-                    ),
+                    [
+                        InlineKeyboardButton(
+                            text="📦 Мои заказы", callback_data="my_orders"
+                        ),
+                    ],
                 )
             else:
                 keyboard.insert(
-                    0, InlineKeyboardButton(text="🛒Корзина", callback_data="cart")
+                    0, [InlineKeyboardButton(text="🛒Корзина", callback_data="cart")]
                 )
         else:
             keyboard.insert(
                 0,
-                InlineKeyboardButton(
-                    text=f"💳 Пополнить баланс {-remainder}₽",
-                    callback_data=f"replenish_balance_{address_id}",
-                ),
+                [
+                    InlineKeyboardButton(
+                        text=f"💳 Пополнить баланс {-remainder}₽",
+                        callback_data=f"replenish_balance_{address_id}",
+                    ),
+                ],
             )
-
         return InlineKeyboardMarkup(inline_keyboard=keyboard)

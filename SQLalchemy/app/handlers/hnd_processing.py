@@ -1,12 +1,9 @@
 from aiogram import Bot, Router, F
-from aiogram.types import Message
-from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery
 from utils.states import OrderForm
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
 from queries.orm import OrderQueries, UserQueries, BookQueries
 from text_templates import order_data_structure, text_address_data
-from aiogram.fsm.context import FSMContext
 from keyboards.kb_order import OrderProcessing
 from config import ADMIN_ID
 import asyncio
@@ -26,15 +23,19 @@ async def delete_messages(bot, chat_id: int, message_ids: list):
 async def format_address(address_data) -> str:
     if not address_data:
         return "Не указан"
+    if hasattr(address_data, "_mapping"):
+        address_dict = dict(address_data._mapping)
+    else:
+        address_dict = address_data
     parts = []
-    if address_data.city:
-        parts.append(f"г.{address_data.city}")
-    if address_data.street:
-        parts.append(f"ул.{address_data.street}")
-    if address_data.house:
-        parts.append(f"д.{address_data.house}")
-    if address_data.apartment:
-        parts.append(f"кв.{address_data.apartment}")
+    if address_dict.get("city"):
+        parts.append(f"г.{address_dict['city']}")
+    if address_dict.get("street"):
+        parts.append(f"ул.{address_dict['street']}")
+    if address_dict.get("house"):
+        parts.append(f"д.{address_dict['house']}")
+    if address_dict.get("apartment"):
+        parts.append(f"кв.{address_dict['apartment']}")
     return ", ".join(parts) if parts else "Не указан"
 
 
@@ -46,18 +47,18 @@ async def format_products(cart_data) -> str:
     return "\n".join(products) if products else "Нет товаров"
 
 
-async def send_order_notification(bot: Bot, order_data: dict):
+async def send_order_notification(bot: Bot, order_data: dict, order_id):
     message_text = (
         "🛒 *НОВЫЙ ЗАКАЗ!*\n\n"
-        f"👤 *Клиент:* {order_data['user_name']}\n"
+        f"👤 *Клиент:* {order_data['username']}\n"
         f"📞 *Телефон:* {order_data['user_phone']}\n"
         f"👤 *TG:* @{order_data['username']} (ID: {order_data['user_id']})\n"
         f"🏠 *Адрес:* {order_data['address']}\n"
         f"📦 *Товары:*\n{order_data['products']}\n"
         f"💰 *Сумма:* {order_data['total_price']}₽\n"
-        f"💬 *Комментарий:* {order_data['comment']}"
+        f"💬 *Комментарий:* {order_data['comment']}\n"
+        f"*Номер заказа* {order_id}"
     )
-
     try:
         await bot.send_message(
             chat_id=ADMIN_ID, text=message_text, parse_mode="Markdown"
@@ -299,42 +300,39 @@ async def new_order_done(callback: CallbackQuery, bot: Bot):
     address_id = int(address_str)
     telegram_id = callback.from_user.id
     address_data = await OrderQueries.get_user_address_data(telegram_id, address_id)
-    # address_text = await text_address_data(address_data)
     total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
     price = int(total_price)
-    # list_of_books = []
-    # for book_data in cart_data:
-    #     books_inside = (
-    #         f"\n📖{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽"
-    #     )
-    #     list_of_books.append(books_inside)
     user_balance = await UserQueries.get_user_balance(telegram_id)
     balance = int(user_balance)
-    # text = f"    🛒Корзина\n{''.join(list_of_books)}\n\n💳 Ваш баланс - {user_balance}₽\n💵 Сумма корзины -  {total_price}₽"
-    # text += address_text
     remainder = balance - price
     if remainder >= 0:
         all_available, insufficient_books = await BookQueries.check_books_availability(
             cart_data
         )
         if all_available:
+            if address_data:
+                address_dict = dict(address_data._mapping)
+            else:
+                address_dict = {}
             order_data = {
-                "user_name": address_data.name if address_data else "Не указано",
-                "user_phone": address_data.phone if address_data else "Не указан",
-                "address": await format_address(address_data),
-                "payment": address_data.payment if address_data else "Не указан",
+                "user_name": address_dict.get("name", "Не указано"),
+                "user_phone": address_dict.get("phone", "Не указан"),
+                "address": await format_address(address_dict),
+                "payment": address_dict.get("payment", "Не указан"),
                 "products": await format_products(cart_data),
                 "total_price": total_price,
-                "comment": address_data.comment if address_data else "Нет комментария",
+                "comment": address_dict.get("comment", "Нет комментария"),
                 "user_id": telegram_id,
                 "username": callback.from_user.username or "Не указан",
             }
             await BookQueries.decrease_book_value(cart_data)
-            await UserQueries.updata_user_balance(telegram_id, -remainder)
-            await send_order_notification(Bot, order_data)
+            await UserQueries.updata_user_balance(telegram_id, remainder)
+            order_id = await OrderQueries.made_order(telegram_id, address_id, price)
+            await send_order_notification(bot, order_data, order_id)
+            await OrderQueries.del_cart(telegram_id)
             await wait_msg.delete()
             await callback.message.edit_text(
-                text="🎊 Заказ оформлен!\nВ Ближайшее время с вам свяжется менеджер для согласования даты доставки",
+                text=f"🎊 Заказ оформлен! 🎊\nНомер вашего заказа {order_id}\nВ Ближайшее время с вам свяжется менеджер для согласования даты доставки\nСледить за статусом заказа можно в разделе: 📦 Мои заказы",
                 reply_markup=await OrderProcessing.kb_order_last_step(
                     remainder, all_available, address_id
                 ),
@@ -603,8 +601,8 @@ async def process_apartment(message: Message, state: FSMContext):
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id
     )
-    text_address = await text_address_data(address_data, is_complete)
-    is_complete = OrderQueries.check_address_completion(address_id)
+    text_address = await text_address_data(address_data)
+    is_complete = await OrderQueries.check_address_completion(address_id)
     await bot.edit_message_text(
         chat_id=message.chat.id,
         message_id=main_message_id,
@@ -612,6 +610,6 @@ async def process_apartment(message: Message, state: FSMContext):
         reply_markup=await OrderProcessing.kb_change_details(address_id, is_complete),
     )
     temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
-    await state.clear()
     await asyncio.sleep(1)
     await temp_mess.delete()
+    await state.clear()

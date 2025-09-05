@@ -12,3 +12,7 @@ class OrderForm(StatesGroup):
     payment = State()
     comment = State()
     editing_field = State()
+
+
+class SupportState(StatesGroup):
+    message_to_support = State()

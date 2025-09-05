@@ -5,15 +5,17 @@ from models import (
     User,
     Review,
     BookStatus,
+    OrderStatus,
     BookGenre,
     Cart,
     CartItem,
     UserAddress,
+    OrderData,
 )
 from faker import Faker
 import random
 from datetime import datetime, timedelta
-from sqlalchemy import case, select, text, func, and_, update
+from sqlalchemy import case, select, text, func, and_, update, or_
 
 
 fake = Faker("ru_RU")
@@ -177,19 +179,14 @@ class BookQueries:
     @staticmethod
     async def decrease_book_value(book_data):
         async with AsyncSessionLocal() as session:
-            case_statements = []
             for book in book_data:
                 book_id = book.get("book_id")
-                quantity_to_decrease = book.get("book_quantity")
-                case_statements.append(
-                    (Book.book_id == book_id, Book.quantity - quantity_to_decrease)
+                quantity_to_decrease = book.get("quantity")
+                await session.execute(
+                    update(Book)
+                    .where(Book.book_id == book_id)
+                    .values(book_quantity=Book.book_quantity - quantity_to_decrease)
                 )
-            case_statements.append((None, Book.quantity))
-            await session.execute(
-                update(Book)
-                .values(quantity=case(*case_statements, value=Book.book_id))
-                .where(Book.book_id.in_([book["book_id"] for book in book_data]))
-            )
             await session.commit()
 
     @staticmethod
@@ -197,7 +194,7 @@ class BookQueries:
         async with AsyncSessionLocal() as session:
             book_ids = [book["book_id"] for book in book_data]
             result = await session.execute(
-                select(Book.book_id, Book.quantity, Book.title).where(
+                select(Book.book_id, Book.book_quantity, Book.book_title).where(
                     Book.book_id.in_(book_ids)
                 )
             )
@@ -209,7 +206,7 @@ class BookQueries:
             all_available = True
             for book in book_data:
                 book_id = book["book_id"]
-                required_quantity = book["book_quantity"]
+                required_quantity = book["quantity"]
                 if book_id not in db_books_map:
                     insufficient_books.append(f"❌ Книга ID {book_id} не найдена")
                     all_available = False
@@ -269,14 +266,6 @@ class SaleQueries:
 
 
 class UserQueries:
-    # @staticmethod
-    # async def get_user(user_id: int):
-    #     async with AsyncSessionLocal() as session:
-    #         user = await session.get(User, user_id)
-    #         print(
-    #             f"username - {user.username}, Возраст - {user.user_age}, Дата регистрации - {user.registration_date}"
-    #         )
-
     @staticmethod
     async def update_user(user_id: int, new_username: str):
         async with AsyncSessionLocal() as session:
@@ -568,6 +557,106 @@ class OrderQueries:
             address_id = new_address.address_id
             await session.commit()
             return address_id
+
+    @staticmethod
+    async def made_order(telegram_id, address_id, price):
+        async with AsyncSessionLocal() as session:
+            new_order = OrderData(
+                address_id=address_id, telegram_id=telegram_id, price=price
+            )
+            session.add(new_order)
+            await session.flush()
+            order_id = new_order.order_id
+            await session.commit()
+            return order_id
+
+    @staticmethod
+    async def get_user_orders(telegram_id, limit: int = 5, offset: int = 0):
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                select(
+                    OrderData.order_id,
+                    OrderData.status,
+                    OrderData.price,
+                    OrderData.created_date,
+                )
+                .order_by(OrderData.created_date.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            result = await session.execute(stmt)
+            return result.mappings().all()
+
+    @staticmethod
+    async def get_user_orders_count(telegram_id: int):
+        async with AsyncSessionLocal() as session:
+            stmt = select(func.count()).where(OrderData.telegram_id == telegram_id)
+            result = await session.execute(stmt)
+            return result.scalar()
+
+    @staticmethod
+    async def get_order_details(order_id: int, telegram_id: int):
+        """Получает детальную информацию о заказе"""
+        async with AsyncSessionLocal() as session:
+            order_stmt = (
+                select(
+                    OrderData.order_id,
+                    OrderData.status,
+                    OrderData.price,
+                    OrderData.created_date,
+                    OrderData.delivery_date,
+                    UserAddress.city,
+                    UserAddress.street,
+                    UserAddress.house,
+                    UserAddress.apartment,
+                    UserAddress.comment,
+                )
+                .join(UserAddress, OrderData.address_id == UserAddress.address_id)
+                .where(
+                    and_(
+                        OrderData.order_id == order_id,
+                        OrderData.telegram_id == telegram_id,
+                    )
+                )
+            )
+            order_result = await session.execute(order_stmt)
+            order_data = order_result.mappings().first()
+            if not order_data:
+                return None
+            items_stmt = (
+                select(Book.book_title, CartItem.quantity, CartItem.price)
+                .select_from(OrderData)
+                .join(Cart, OrderData.telegram_id == Cart.telegram_id)
+                .join(CartItem, Cart.cart_id == CartItem.cart_id)
+                .join(Book, CartItem.book_id == Book.book_id)
+                .where(OrderData.order_id == order_id)
+            )
+            items_result = await session.execute(items_stmt)
+            items = items_result.mappings().all()
+            address_parts = []
+            if order_data["city"]:
+                address_parts.append(f"г.{order_data['city']}")
+            if order_data["street"]:
+                address_parts.append(f"ул.{order_data['street']}")
+            if order_data["house"]:
+                address_parts.append(f"д.{order_data['house']}")
+            if order_data["apartment"]:
+                address_parts.append(f"кв.{order_data['apartment']}")
+            address = ", ".join(address_parts) if address_parts else "Не указан"
+            items_text = ""
+            for item in items:
+                items_text += f"• {item['book_title']} - {item['quantity']}шт. × {item['price']}₽\n"
+            return {
+                "order_id": order_data["order_id"],
+                "status": order_data["status"],
+                "total_price": order_data["price"],
+                "created_date": order_data["created_date"],
+                "delivery_date": order_data["delivery_date"],
+                "address": address,
+                "comment": order_data["comment"],
+                "items": items_text,
+                "items_list": items,
+            }
 
 
 class DBData:

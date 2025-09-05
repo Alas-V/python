@@ -1,4 +1,5 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from queries.orm import OrderQueries
 
 
 class UserKeyboards:
@@ -6,11 +7,7 @@ class UserKeyboards:
     async def main_menu() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="📦Мои заказы", callback_data="confirmed_orders"
-                    )
-                ],
+                [InlineKeyboardButton(text="📦Мои заказы", callback_data="my_orders")],
                 [
                     InlineKeyboardButton(text="🛒Корзина", callback_data="cart"),
                     InlineKeyboardButton(text="📚Каталог", callback_data="catalog"),
@@ -251,5 +248,78 @@ class UserKeyboards:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="🔙Главное меню", callback_data="main_menu")]
+            ]
+        )
+
+    @staticmethod
+    async def kb_my_orders(
+        telegram_id: int, offset: int = 0, limit: int = 5
+    ) -> InlineKeyboardMarkup:
+        orders = await OrderQueries.get_user_orders(telegram_id, limit, offset)
+        total_orders = await OrderQueries.get_user_orders_count(telegram_id)
+        keyboard = []
+        for order in orders:
+            order_id = order["order_id"]
+            status = order["status"]
+            price = order["price"]
+            date = order["created_date"].strftime("%d.%m.%Y")
+            button_text = f"📦 Заказ #{order_id} - {price}₽ - {status} - {date}"
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=button_text, callback_data=f"order_detail_{order_id}"
+                    )
+                ]
+            )
+        navigation_buttons = []
+        if offset > 0:
+            navigation_buttons.append(
+                InlineKeyboardButton(
+                    text="⬅️ Назад",
+                    callback_data=f"orders_prev_{offset - limit}_{limit}",
+                )
+            )
+        if offset + limit < total_orders:
+            navigation_buttons.append(
+                InlineKeyboardButton(
+                    text="Дальше ➡️",
+                    callback_data=f"orders_next_{offset + limit}_{limit}",
+                )
+            )
+        if navigation_buttons:
+            keyboard.append(navigation_buttons)
+        keyboard.append(
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
+        )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def kb_no_my_orders() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📨 Поддержка", callback_data="support")],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Главное меню", callback_data="main_menu"
+                    )
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def kb_order_detail(order_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="↩️ К списку заказов", callback_data="my_orders"
+                    ),
+                    InlineKeyboardButton(text="📨 Поддержка", callback_data="support"),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Главное меню", callback_data="main_menu"
+                    )
+                ],
             ]
         )

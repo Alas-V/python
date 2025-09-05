@@ -51,9 +51,10 @@ class BookGenre(str, Enum):
 
 
 class OrderStatus(str, Enum):
-    PENDING = "pending"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    PROCESSING = "В обработке⌛"
+    DELIVERING = "🚚Доставляется"
+    COMPLETED = "Доставлен✅"
+    CANCELLED = "Отменен❌"
 
 
 class BookStatus(str, Enum):
@@ -179,6 +180,10 @@ class OrderData(Base):
     delivery_date: Mapped[str] = mapped_column(String, nullable=True)
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
+    price: Mapped[int] = mapped_column(Integer)
+    status: Mapped[OrderStatus] = mapped_column(
+        String(20), nullable=False, default=OrderStatus.PROCESSING
+    )
     user: Mapped["User"] = relationship(back_populates="order_data")
 
 
