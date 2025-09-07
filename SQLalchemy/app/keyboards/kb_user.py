@@ -312,7 +312,7 @@ class UserKeyboards:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="↩️ К списку заказов", callback_data="my_orders"
+                        text="🔙 К списку заказов", callback_data="my_orders"
                     ),
                     InlineKeyboardButton(text="📨 Поддержка", callback_data="support"),
                 ],
@@ -320,6 +320,55 @@ class UserKeyboards:
                     InlineKeyboardButton(
                         text="🔙 Главное меню", callback_data="main_menu"
                     )
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def kb_reviews(book_id, reviews) -> InlineKeyboardMarkup:
+        keyboard = []
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="✏️Написать отзыв", callback_data=f"new_review_{book_id}"
+                )
+            ]
+        )
+        keyboard.append(
+            [
+                InlineKeyboardButton(text="🔙 Назад", callback_data=f"book_{book_id}"),
+                InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu"),
+            ],
+        )
+        if reviews:
+            rev_place = 0
+            for review in reviews:
+                keyboard.insert(
+                    rev_place,
+                    [
+                        InlineKeyboardButton(
+                            text=f"⭐ {review['review_rating']} - {review['review_title']}",
+                            callback_data=f"review_{review['review_id']}_{book_id}",
+                        ),
+                    ],
+                )
+                rev_place += 1
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def kb_in_review(book_id) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📚 Вернуться к книге", callback_data=f"book_{book_id}"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data=f"reviews_on_book_{book_id}"
+                    ),
+                    InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu"),
                 ],
             ]
         )

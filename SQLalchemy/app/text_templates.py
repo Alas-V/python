@@ -127,6 +127,27 @@ async def format_order_details(order_details: dict) -> str:
 """
 
 
+async def get_full_review(review_data):
+    rating = review_data["review_rating"]
+    title = review_data["review_title"]
+    body = review_data["review_body"]
+    created_at = review_data["created_at"]
+    rating_emoji = {1: "😠", 2: "😕", 3: "😐", 4: "🙂", 5: "😍"}.get(rating, "⭐")
+    stars = "⭐" * rating + "☆" * (5 - rating)
+    date_str = created_at.strftime("%d.%m.%Y в %H:%M")
+    text = f"""
+{rating_emoji} *{title}*
+
+{stars} ({rating}/5)
+
+📖 *Текст отзыва:*
+{body}
+
+📅 *Дата:* {date_str}
+"""
+    return text
+
+
 INFOTEXT = """📚 BookStore Demo Bot
 Прототип книжного магазина с полным циклом заказа
 

@@ -177,6 +177,52 @@ class BookQueries:
             return result.mappings().first()
 
     @staticmethod
+    async def get_book_reviews(book_id):
+        async with AsyncSessionLocal() as session:
+            book_id_int = int(book_id)
+            book_query = (
+                select(
+                    Book.book_id,
+                    Book.book_title,
+                    Author.author_name,
+                    func.avg(Review.review_rating).label("avg_rating"),
+                    func.count(Review.review_id).label("reviews_count"),
+                )
+                .join(Author, Book.author_id == Author.author_id, isouter=True)
+                .join(Review, Review.book_id == Book.book_id, isouter=True)
+                .where(Book.book_id == book_id_int)
+                .group_by(Book.book_id, Book.book_title, Author.author_name)
+            )
+            book_result = await session.execute(book_query)
+            book_info = book_result.mappings().first()
+            reviews_query = (
+                select(
+                    Review.review_id,
+                    Review.review_rating,
+                    Review.review_title,
+                    Review.review_body,
+                )
+                .join(User, Review.user_id == User.user_id, isouter=True)
+                .where(Review.book_id == book_id_int)
+            )
+            reviews_result = await session.execute(reviews_query)
+            reviews = reviews_result.mappings().all()
+            return {"book_info": book_info, "reviews": reviews}
+
+    @staticmethod
+    async def full_book_review(review_id):
+        async with AsyncSessionLocal() as session:
+            stmt = select(
+                Review.review_rating,
+                Review.review_title,
+                Review.review_body,
+                Review.created_at,
+            ).where(Review.review_id == review_id)
+            reviews_result = await session.execute(stmt)
+            reviews = reviews_result.mappings().first()
+            return reviews
+
+    @staticmethod
     async def decrease_book_value(book_data):
         async with AsyncSessionLocal() as session:
             for book in book_data:
@@ -559,10 +605,21 @@ class OrderQueries:
             return address_id
 
     @staticmethod
-    async def made_order(telegram_id, address_id, price):
+    async def made_order(telegram_id, address_id, price, cart_data):
         async with AsyncSessionLocal() as session:
+            book_ids = []
+            book_quants = []
+            for book in cart_data:
+                book_id = book.get("book_id")
+                quant = book.get("quantity")
+                book_ids.append(book_id)
+                book_quants.append(quant)
             new_order = OrderData(
-                address_id=address_id, telegram_id=telegram_id, price=price
+                address_id=address_id,
+                telegram_id=telegram_id,
+                price=price,
+                book_id=book_ids,
+                quantity=book_quants,
             )
             session.add(new_order)
             await session.flush()
@@ -596,7 +653,6 @@ class OrderQueries:
 
     @staticmethod
     async def get_order_details(order_id: int, telegram_id: int):
-        """Получает детальную информацию о заказе"""
         async with AsyncSessionLocal() as session:
             order_stmt = (
                 select(
@@ -605,6 +661,8 @@ class OrderQueries:
                     OrderData.price,
                     OrderData.created_date,
                     OrderData.delivery_date,
+                    OrderData.book_id,
+                    OrderData.quantity,
                     UserAddress.city,
                     UserAddress.street,
                     UserAddress.house,
@@ -623,16 +681,6 @@ class OrderQueries:
             order_data = order_result.mappings().first()
             if not order_data:
                 return None
-            items_stmt = (
-                select(Book.book_title, CartItem.quantity, CartItem.price)
-                .select_from(OrderData)
-                .join(Cart, OrderData.telegram_id == Cart.telegram_id)
-                .join(CartItem, Cart.cart_id == CartItem.cart_id)
-                .join(Book, CartItem.book_id == Book.book_id)
-                .where(OrderData.order_id == order_id)
-            )
-            items_result = await session.execute(items_stmt)
-            items = items_result.mappings().all()
             address_parts = []
             if order_data["city"]:
                 address_parts.append(f"г.{order_data['city']}")
@@ -644,8 +692,25 @@ class OrderQueries:
                 address_parts.append(f"кв.{order_data['apartment']}")
             address = ", ".join(address_parts) if address_parts else "Не указан"
             items_text = ""
-            for item in items:
-                items_text += f"• {item['book_title']} - {item['quantity']}шт. × {item['price']}₽\n"
+            items_list = []
+            for i, book_id in enumerate(order_data["book_id"]):
+                quantity = order_data["quantity"][i]
+                book_stmt = select(Book.book_title, Book.book_price).where(
+                    Book.book_id == book_id
+                )
+                book_result = await session.execute(book_stmt)
+                book = book_result.mappings().first()
+                if book:
+                    item_price = book["book_price"] * quantity
+                    items_text += f"• {book['book_title']} - {quantity}шт. × {book['book_price']}₽ = {item_price}₽\n"
+                    items_list.append(
+                        {
+                            "book_title": book["book_title"],
+                            "quantity": quantity,
+                            "price": book["book_price"],
+                            "total_price": item_price,
+                        }
+                    )
             return {
                 "order_id": order_data["order_id"],
                 "status": order_data["status"],
@@ -655,8 +720,12 @@ class OrderQueries:
                 "address": address,
                 "comment": order_data["comment"],
                 "items": items_text,
-                "items_list": items,
+                "items_list": items_list,
             }
+
+
+class SupportQueries:
+    pass
 
 
 class DBData:

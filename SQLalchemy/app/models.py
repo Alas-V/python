@@ -8,6 +8,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Float,
+    JSON,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from database import Base
@@ -99,7 +100,7 @@ class Book(Base):
     # 0.1 = 10%, 1 = 100%
     book_price: Mapped[int] = mapped_column(Integer, CheckConstraint("book_price >= 0"))
     book_add_date: Mapped[created_at]
-    book_genre: Mapped[BookGenre] = mapped_column(String(40))
+    book_genre: Mapped[BookGenre] = mapped_column(String(45))
     book_quantity: Mapped[int] = mapped_column(Integer, index=True)
     author: Mapped["Author"] = relationship(back_populates="author_books")
     reviews: Mapped[List["Review"]] = relationship(
@@ -152,6 +153,7 @@ class User(Base):
     )
     order_data: Mapped["OrderData"] = relationship(back_populates="user")
     address: Mapped["UserAddress"] = relationship(back_populates="user")
+    appeal: Mapped["SupportMessages"] = relationship(back_populates="user")
 
 
 class Review(Base):
@@ -163,6 +165,7 @@ class Review(Base):
     )
     review_title: Mapped[str] = mapped_column(String(100))
     review_body: Mapped[Optional[str]] = mapped_column(String(1000))
+    # review_photo_id: Mapped[List[int]] = mapped_column(nullable=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.user_id"))
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
@@ -177,6 +180,8 @@ class OrderData(Base):
     telegram_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.telegram_id")
     )
+    book_id: Mapped[list[int]] = mapped_column(JSON)
+    quantity: Mapped[list[int]] = mapped_column(JSON)
     delivery_date: Mapped[str] = mapped_column(String, nullable=True)
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
@@ -205,3 +210,16 @@ class UserAddress(Base):
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
     user: Mapped["User"] = relationship(back_populates="address")
+
+
+class SupportMessages(Base):
+    __tablename__ = "support_messages"
+    appeal_id: Mapped[intpk]
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id")
+    )
+    user_message: Mapped[str] = mapped_column(String(600))
+    admin_answer: Mapped[str] = mapped_column(String(400))
+    created_date: Mapped[created_at]
+    updated_at: Mapped[updated_at]
+    user: Mapped["User"] = relationship(back_populates="appeal")

@@ -14,5 +14,9 @@ class OrderForm(StatesGroup):
     editing_field = State()
 
 
+class Review(StatesGroup):
+    pass
+
+
 class SupportState(StatesGroup):
     message_to_support = State()

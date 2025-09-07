@@ -8,6 +8,7 @@ from text_templates import (
     get_book_details_on_sale,
     format_order_details,
     INFOTEXT,
+    get_full_review,
 )
 from aiogram.fsm.context import FSMContext
 
@@ -187,7 +188,7 @@ async def cart(callback: CallbackQuery, state: FSMContext):
 async def sale_menu(callback: CallbackQuery):
     await callback.answer("")
     await callback.message.edit_text(
-        "Выберите жанр для поиска:",
+        "🔥 Книги со скидками 🔥\nВыберите жанр для поиска:",
         reply_markup=await UserKeyboards.show_genre_on_sale(),
     )
 
@@ -276,4 +277,41 @@ async def clean_the_cart(callback: CallbackQuery):
     await callback.message.edit_text(
         f"    🛒Ваша корзина пуста!\n\nВаш баланс - {user_balance}₽",
         reply_markup=await UserKeyboards.in_empty_cart(),
+    )
+
+
+@user_router.callback_query(F.data.startswith("reviews_on_book_"))
+async def reviews_first(callback: CallbackQuery):
+    book_id = int(callback.data.split("_")[3])
+    data = await BookQueries.get_book_reviews(book_id)
+    book_info = data["book_info"]
+    reviews = data["reviews"]
+    if not book_info:
+        await callback.message.answer("Книга не найдена")
+        return
+    message_text = (
+        f"📖 <b>{book_info['book_title']}</b>\n"
+        f"👤 Автор: {book_info['author_name'] or 'Неизвестен'}\n"
+        f"⭐ Средняя оценка: {book_info['avg_rating'] or 0:.1f}/5\n"
+        f"💬 Количество отзывов: {book_info['reviews_count'] or 0}\n\n"
+        f"<b>Отзывы:</b>"
+    )
+    await callback.message.edit_text(
+        text=message_text,
+        reply_markup=await UserKeyboards.kb_reviews(book_id, reviews),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@user_router.callback_query(F.data.startswith("review_"))
+async def full_review(callback: CallbackQuery):
+    review_id = int(callback.data.split("_")[1])
+    book_id = int(callback.data.split("_")[2])
+    review_data = await BookQueries.full_book_review(review_id)
+    text = await get_full_review(review_data)
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=await UserKeyboards.kb_in_review(book_id),
+        parse_mode="Markdown",
     )

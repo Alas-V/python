@@ -207,7 +207,7 @@ async def change_details(callback: CallbackQuery, state: FSMContext):
     prompts = {
         "name": "👤 Введите ваше имя:",
         "phone": "📞 Введите ваш телефон:",
-        "city": "🗺️s Введите город:",
+        "city": "🗺️ Введите город:",
         "street": "🛣️ Введите улицу:",
         "house": "🏠 Введите номер дома:",
         "apartment": "🚪 Введите номер квартиры:",
@@ -327,7 +327,9 @@ async def new_order_done(callback: CallbackQuery, bot: Bot):
             }
             await BookQueries.decrease_book_value(cart_data)
             await UserQueries.updata_user_balance(telegram_id, remainder)
-            order_id = await OrderQueries.made_order(telegram_id, address_id, price)
+            order_id = await OrderQueries.made_order(
+                telegram_id, address_id, price, cart_data
+            )
             await send_order_notification(bot, order_data, order_id)
             await OrderQueries.del_cart(telegram_id)
             await wait_msg.delete()
