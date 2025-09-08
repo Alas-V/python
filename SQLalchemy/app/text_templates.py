@@ -148,6 +148,16 @@ async def get_full_review(review_data):
     return text
 
 
+async def book_for_review(book_info):
+    message_text = (
+        f"📖 <b>{book_info['book_title']}</b>\n"
+        f"👤 Автор: {book_info['author_name'] or 'Неизвестен'}\n"
+        f"⭐ Оценка: {book_info['avg_rating'] or 0:.1f}\n"
+        f"💬 Количество отзывов: {book_info['reviews_count'] or 0}\n\n"
+    )
+    return message_text
+
+
 INFOTEXT = """📚 BookStore Demo Bot
 Прототип книжного магазина с полным циклом заказа
 

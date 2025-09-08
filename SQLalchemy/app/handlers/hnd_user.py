@@ -9,6 +9,7 @@ from text_templates import (
     format_order_details,
     INFOTEXT,
     get_full_review,
+    book_for_review,
 )
 from aiogram.fsm.context import FSMContext
 
@@ -61,9 +62,17 @@ async def cmd_start(message: Message, state: FSMContext):
 
 
 @user_router.callback_query(F.data == "main_menu")
-async def menu(callback: CallbackQuery):
+async def menu(callback: CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state:
+        data = await state.get_data()
+        last_hint_id = data["last_hint_id"]
+        if last_hint_id:
+            bot = callback.message.bot
+            await delete_messages(bot, callback.message.chat.id, [last_hint_id])
+        await state.clear()
     text = """
-        📚 Главное меню Book Bot  
+        📚 Главное меню Book Bot *DEMO*, твой персональный помощник в мире книг.
 
 Выберите раздел:  
 
@@ -224,7 +233,15 @@ async def classic_show_books(callback: CallbackQuery):
 
 
 @user_router.callback_query(F.data.startswith("book_"))
-async def book_details(callback: CallbackQuery):
+async def book_details(callback: CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state:
+        data = await state.get_data()
+        last_hint_id = data["last_hint_id"]
+        if last_hint_id:
+            bot = callback.message.bot
+            await delete_messages(bot, callback.message.chat.id, [last_hint_id])
+        await state.clear()
     book_id = callback.data.split("_")[1]
     book_data = await BookQueries.get_book_info(book_id)
     if not book_data:
@@ -289,13 +306,8 @@ async def reviews_first(callback: CallbackQuery):
     if not book_info:
         await callback.message.answer("Книга не найдена")
         return
-    message_text = (
-        f"📖 <b>{book_info['book_title']}</b>\n"
-        f"👤 Автор: {book_info['author_name'] or 'Неизвестен'}\n"
-        f"⭐ Средняя оценка: {book_info['avg_rating'] or 0:.1f}/5\n"
-        f"💬 Количество отзывов: {book_info['reviews_count'] or 0}\n\n"
-        f"<b>Отзывы:</b>"
-    )
+    message_text = await book_for_review(book_info)
+    message_text += "\n<b>Отзывы:</b>"
     await callback.message.edit_text(
         text=message_text,
         reply_markup=await UserKeyboards.kb_reviews(book_id, reviews),

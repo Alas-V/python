@@ -14,8 +14,10 @@ class OrderForm(StatesGroup):
     editing_field = State()
 
 
-class Review(StatesGroup):
-    pass
+class ReviewState(StatesGroup):
+    rating = State()
+    title = State()
+    body = State()
 
 
 class SupportState(StatesGroup):

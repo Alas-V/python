@@ -161,12 +161,15 @@ class Review(Base):
     review_id: Mapped[intpk]
     book_id: Mapped[int] = mapped_column(Integer, ForeignKey("books.book_id"))
     review_rating: Mapped[int] = mapped_column(
-        Integer, CheckConstraint("review_rating BETWEEN 1 AND 5"), index=True
+        Integer, CheckConstraint("review_rating BETWEEN 0 AND 5"), index=True
     )
-    review_title: Mapped[str] = mapped_column(String(100))
-    review_body: Mapped[Optional[str]] = mapped_column(String(1000))
+    review_title: Mapped[str] = mapped_column(String(100), nullable=True)
+    review_body: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     # review_photo_id: Mapped[List[int]] = mapped_column(nullable=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.user_id"))
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id")
+    )
+    finished: Mapped[bool] = mapped_column(Boolean, server_default="FALSE")
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
     reviewed_book: Mapped["Book"] = relationship(back_populates="reviews")

@@ -95,35 +95,35 @@ class BookQueries:
                 f"Название - {book.book_title}, Год - {book.book_year}, Цена - {book.book_price}\n"
             )
 
-    @staticmethod
-    async def select_avg_book_price():
-        async with AsyncSessionLocal() as session:
-            query = (
-                select(
-                    Author.author_name,
-                    func.avg(Book.book_price).label("avg_book_price"),
-                )
-                .select_from(Book)
-                .where(
-                    and_(Book.book_year > 2000),
-                    Book.book_status == "available",
-                )
-                .join(Author, Book.author_id == Author.author_id)
-                .group_by(Author.author_name)
-                .order_by(func.avg(Book.book_price).desc())
-                .limit(5)
-            )
-            result = await session.execute(query)
-            for author, price in result:
-                rounded = round(price, 2)
-                print(f"Автор - {author}, Средняя цена книг - {rounded}")
+    # @staticmethod
+    # async def select_avg_book_price():
+    #     async with AsyncSessionLocal() as session:
+    #         query = (
+    #             select(
+    #                 Author.author_name,
+    #                 func.avg(Book.book_price).label("avg_book_price"),
+    #             )
+    #             .select_from(Book)
+    #             .where(
+    #                 and_(Book.book_year > 2000),
+    #                 Book.book_status == "available",
+    #             )
+    #             .join(Author, Book.author_id == Author.author_id)
+    #             .group_by(Author.author_name)
+    #             .order_by(func.avg(Book.book_price).desc())
+    #             .limit(5)
+    #         )
+    #         result = await session.execute(query)
+    #         for author, price in result:
+    #             rounded = round(price, 2)
+    #             print(f"Автор - {author}, Средняя цена книг - {rounded}")
 
-    @staticmethod
-    async def get_avg_price():
-        async with AsyncSessionLocal() as session:
-            query = select(func.avg(Book.book_price))
-            result = await session.execute(query)
-            print(f"\nСредняя цена всех книг - {round(result.scalar(), 2)}")
+    # @staticmethod
+    # async def get_avg_price():
+    #     async with AsyncSessionLocal() as session:
+    #         query = select(func.avg(Book.book_price))
+    #         result = await session.execute(query)
+    #         print(f"\nСредняя цена всех книг - {round(result.scalar(), 2)}")
 
     @staticmethod
     async def get_book_by_genre(genre: str):
@@ -137,7 +137,7 @@ class BookQueries:
                     func.avg(Review.review_rating).label("book_rating"),
                 )
                 .select_from(Book)
-                .where(Book.book_genre == genre)
+                .where(and_(Book.book_genre == genre, Review.finished))
                 .join(Review, Book.book_id == Review.book_id)
                 .group_by(Book.book_id, Book.book_title)
                 .order_by(Book.sale_value.desc(), Book.book_title)
@@ -167,7 +167,7 @@ class BookQueries:
                 .select_from(Book)
                 .join(Review, Review.book_id == Book.book_id)
                 .join(Author, Book.author_id == Author.author_id, isouter=True)
-                .where(Book.book_id == book_id_int)
+                .where(and_(Book.book_id == book_id_int, Review.finished))
                 .group_by(
                     Book.book_id,
                     Author.author_id,
@@ -190,7 +190,7 @@ class BookQueries:
                 )
                 .join(Author, Book.author_id == Author.author_id, isouter=True)
                 .join(Review, Review.book_id == Book.book_id, isouter=True)
-                .where(Book.book_id == book_id_int)
+                .where(and_(Book.book_id == book_id_int, Review.finished))
                 .group_by(Book.book_id, Book.book_title, Author.author_name)
             )
             book_result = await session.execute(book_query)
@@ -202,8 +202,8 @@ class BookQueries:
                     Review.review_title,
                     Review.review_body,
                 )
-                .join(User, Review.user_id == User.user_id, isouter=True)
-                .where(Review.book_id == book_id_int)
+                .join(User, Review.telegram_id == User.telegram_id, isouter=True)
+                .where(and_(Review.book_id == book_id_int, Review.finished))
             )
             reviews_result = await session.execute(reviews_query)
             reviews = reviews_result.mappings().all()
@@ -303,7 +303,9 @@ class SaleQueries:
                     Book.sale_value,
                     func.avg(Review.review_rating).label("book_rating"),
                 )
-                .where(and_(Book.book_genre == genre, Book.book_on_sale == True))
+                .where(
+                    and_(Book.book_genre == genre, Book.book_on_sale, Review.finished)
+                )
                 .group_by(Book.book_id)
                 .order_by(Book.sale_value.desc())
             )
@@ -312,12 +314,12 @@ class SaleQueries:
 
 
 class UserQueries:
-    @staticmethod
-    async def update_user(user_id: int, new_username: str):
-        async with AsyncSessionLocal() as session:
-            user = await session.get(User, user_id)
-            user.username = new_username
-            await session.commit()
+    # @staticmethod
+    # async def update_user(user_id: int, new_username: str):
+    #     async with AsyncSessionLocal() as session:
+    #         user = await session.get(User, user_id)
+    #         user.username = new_username
+    #         await session.commit()
 
     @staticmethod
     async def get_user_balance(telegram_id) -> int:
@@ -360,6 +362,57 @@ class UserQueries:
             await session.execute(stmt)
             await session.commit()
             return True
+
+
+class ReviewQueries:
+    @staticmethod
+    async def new_review(telegram_id: int, book_id: int):
+        async with AsyncSessionLocal() as session:
+            new_review = Review(
+                book_id=book_id,
+                review_rating=0,
+                review_title=None,
+                review_body=None,
+                telegram_id=telegram_id,
+                finished=False,
+            )
+            session.add(new_review)
+            await session.flush()
+            review_id = new_review.review_id
+            await session.commit()
+            return review_id
+
+    @staticmethod
+    async def check_review_finished(review_id: int):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    Review.review_rating, Review.review_title, Review.review_body
+                ).where(Review.review_id == review_id)
+            )
+            data = result.first()
+            if not data:
+                return False
+            rating, title, body = data
+            return all(
+                [
+                    rating is not None and rating > 0,
+                    title is not None and title.strip() != "",
+                    body is not None and body.strip() != "",
+                ]
+            )
+
+    @staticmethod
+    async def add_value_column(review_id: int, column, data):
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(Review)
+                .where(Review.review_id == review_id)
+                .values({column: data})
+            )
+            await session.commit()
+            is_finished = await ReviewQueries.check_review_finished(review_id)
+            return is_finished
 
 
 class OrderQueries:
@@ -546,13 +599,6 @@ class OrderQueries:
                 return False
             name, phone, city, street, house, current_status = data
             is_complete = all([name, phone, city, street, house])
-            if current_status != is_complete:
-                await session.execute(
-                    update(UserAddress)
-                    .where(UserAddress.address_id == address_id)
-                    .values(is_complete=is_complete)
-                )
-                await session.commit()
             return is_complete
 
     @staticmethod
@@ -761,14 +807,16 @@ class DBData:
                 review_rating=5,
                 review_title="Best book ever",
                 review_body="The best book I've ever read",
-                user_id=1,
+                telegram_id=123123123,
+                finished=True,
             )
             second_review = Review(
                 book_id=2,
                 review_rating=3,
                 review_title="I think it's alright",
                 review_body="I mean maybe not the best book that I've known but it still kind nice",
-                user_id=1,
+                telegram_id=1241413412,
+                finished=True,
             )
             session.add_all(
                 [
@@ -826,15 +874,16 @@ class DBData:
                 session.add_all(users)
             await session.flush()
             book_ids = [book.book_id for book in books]
-            user_ids = [user.user_id for user in users]
+            user_ids = [user.telegram_id for user in users]
             reviews = [
                 Review(
                     book_id=random.choice(book_ids),
-                    user_id=random.choice(user_ids),
+                    telegram_id=random.choice(user_ids),
                     review_rating=random.randint(1, 3),
                     review_title=fake.sentence(nb_words=3)[:100],
                     review_body=fake.paragraph(nb_sentences=3)[:900],
                     created_at=datetime.now() - timedelta(days=random.randint(0, 365)),
+                    finished=True,
                 )
                 for _ in range(70)
             ]
@@ -843,11 +892,12 @@ class DBData:
             reviews = [
                 Review(
                     book_id=random.choice(book_ids),
-                    user_id=random.choice(user_ids),
+                    telegram_id=random.choice(user_ids),
                     review_rating=random.randint(3, 5),
                     review_title=fake.sentence(nb_words=3)[:100],
                     review_body=fake.paragraph(nb_sentences=3)[:900],
                     created_at=datetime.now() - timedelta(days=random.randint(0, 365)),
+                    finished=True,
                 )
                 for _ in range(250)
             ]

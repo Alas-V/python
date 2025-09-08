@@ -330,7 +330,7 @@ class UserKeyboards:
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    text="✏️Написать отзыв", callback_data=f"new_review_{book_id}"
+                    text="📝Написать отзыв", callback_data=f"new_review_{book_id}"
                 )
             ]
         )

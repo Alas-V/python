@@ -84,9 +84,9 @@ async def new_address(callback: CallbackQuery, state: FSMContext):
     )
     await state.update_data(
         address_id=address_id,
-        main_message_id=main_message.message_id,  # ID основного сообщения
-        last_hint_id=hint_message.message_id,  # ID последней подсказки
-        user_messages=[],  # Для сообщений пользователя
+        main_message_id=main_message.message_id,
+        last_hint_id=hint_message.message_id,
+        user_messages=[],
         current_step="name",
     )
     await state.set_state(OrderForm.name)
