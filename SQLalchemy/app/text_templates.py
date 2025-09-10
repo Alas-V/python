@@ -127,23 +127,31 @@ async def format_order_details(order_details: dict) -> str:
 """
 
 
-async def get_full_review(review_data):
-    rating = review_data["review_rating"]
-    title = review_data["review_title"]
-    body = review_data["review_body"]
+async def get_full_review(review_data, for_new=False):
+    rating = review_data.get("review_rating")
+    title = review_data.get("review_title")
+    body = review_data.get("review_body")
     created_at = review_data["created_at"]
-    rating_emoji = {1: "😠", 2: "😕", 3: "😐", 4: "🙂", 5: "😍"}.get(rating, "⭐")
+    rating_emoji = {0: "Нет оценки ", 1: "😠", 2: "😕", 3: "😐", 4: "🙂", 5: "😍"}.get(
+        rating, "⭐"
+    )
     stars = "⭐" * rating + "☆" * (5 - rating)
     date_str = created_at.strftime("%d.%m.%Y в %H:%M")
+    title = title if title else "Заголовок не указан"
+    body = body if body else "Нет основного текста отзыва"
+    if for_new:
+        date = ""
+    else:
+        date = f"📅 *Дата:* {date_str}"
     text = f"""
 {rating_emoji} *{title}*
 
-{stars} ({rating}/5)
+{stars} ({rating})
 
 📖 *Текст отзыва:*
 {body}
 
-📅 *Дата:* {date_str}
+{date}
 """
     return text
 

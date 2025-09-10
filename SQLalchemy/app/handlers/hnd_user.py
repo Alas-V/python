@@ -18,7 +18,11 @@ user_router = Router()
 
 async def delete_messages(bot, chat_id: int, message_ids: list):
     for message_id in message_ids:
-        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            if "message to delete not found" not in str(e).lower():
+                print(f"Ошибка удаления сообщения {message_id}: {e}")
 
 
 GENRES = {

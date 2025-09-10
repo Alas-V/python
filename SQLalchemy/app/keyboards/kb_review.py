@@ -23,7 +23,15 @@ class KbReview:
             ],
         ]
         if is_finished:
-            keyboard.insert(0, [InlineKeyboardButton("✅Опубликовать отзыв")])
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="✅Опубликовать отзыв",
+                        callback_data=f"publish_review_{review_id}",
+                    )
+                ],
+            )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
@@ -33,28 +41,12 @@ class KbReview:
                 [
                     InlineKeyboardButton(
                         text="⭐⭐⭐⭐⭐",
-                        callback_data=f"rating_{book_id}_{review_id}_5",
+                        callback_data="rating_5",
                     )
                 ],
-                [
-                    InlineKeyboardButton(
-                        text="⭐⭐⭐⭐", callback_data=f"rating_{book_id}_{review_id}_4"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="⭐⭐⭐", callback_data=f"rating_{book_id}_{review_id}_3"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="⭐⭐", callback_data=f"rating_{book_id}_{review_id}_2"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="⭐", callback_data=f"rating_{book_id}_{review_id}_1"
-                    )
-                ],
+                [InlineKeyboardButton(text="⭐⭐⭐⭐", callback_data="rating_4")],
+                [InlineKeyboardButton(text="⭐⭐⭐", callback_data="rating_3")],
+                [InlineKeyboardButton(text="⭐⭐", callback_data="rating_2")],
+                [InlineKeyboardButton(text="⭐", callback_data="rating_1")],
             ]
         )

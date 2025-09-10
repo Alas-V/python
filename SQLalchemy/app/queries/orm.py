@@ -414,6 +414,20 @@ class ReviewQueries:
             is_finished = await ReviewQueries.check_review_finished(review_id)
             return is_finished
 
+    @staticmethod
+    async def review_get_next_empty_field(review_id: int) -> str:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Review).where(Review.review_id == review_id)
+            )
+            review = result.scalar_one()
+            if review.review_rating is None:
+                return "rating"
+            elif review.review_title is None:
+                return "title"
+            elif review.review_body is None:
+                return "body"
+
 
 class OrderQueries:
     @staticmethod
