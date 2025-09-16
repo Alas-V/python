@@ -3,6 +3,7 @@ from queries.orm import OrderQueries, BookQueries, UserQueries, SaleQueries
 from aiogram.types import CallbackQuery, Message
 from aiogram.filters import CommandStart
 from keyboards.kb_user import UserKeyboards
+from keyboards.kb_review import KbReview
 from text_templates import (
     get_book_details,
     get_book_details_on_sale,
@@ -80,6 +81,7 @@ async def menu(callback: CallbackQuery, state: FSMContext):
 
 Выберите раздел:  
 
+    - 👤 Личный кабинет(Ваш баланс, отзывы, заказы)
     - 🛒 Корзина 
     - 📚 Каталог       
     - 🔥 Товары со скидкой  
@@ -87,6 +89,21 @@ async def menu(callback: CallbackQuery, state: FSMContext):
     """
     await callback.answer("Возвращение в Меню")
     await callback.message.edit_text(text, reply_markup=await UserKeyboards.main_menu())
+
+
+@user_router.callback_query(F.data == "account")
+async def account(callback: CallbackQuery):
+    text = """
+    Личный кабинет
+
+Выберите раздел:
+
+    - 📦 Заказы
+    - 📝 Отзыва 
+    """
+    await callback.message.edit_text(
+        text, reply_markup=await UserKeyboards.kb_account()
+    )
 
 
 @user_router.callback_query(F.data == "information")
@@ -105,7 +122,6 @@ async def genre_search(callback: CallbackQuery):
     )
 
 
-# TODO
 @user_router.callback_query(F.data == "my_orders")
 async def check_my_orders(callback: CallbackQuery):
     telegram_id = callback.from_user.id
@@ -119,6 +135,26 @@ async def check_my_orders(callback: CallbackQuery):
     await callback.message.edit_text(
         f"📦 Ваши заказы ({orders_count} шт.):",
         reply_markup=await UserKeyboards.kb_my_orders(telegram_id),
+    )
+    await callback.answer()
+
+
+@user_router.callback_query(F.data == "my_reviews")
+async def check_reviews(callback: CallbackQuery):
+    telegram_id = int(callback.from_user.id)
+    has_draft = await UserQueries.draft_reviews(telegram_id)
+    has_published = await UserQueries.published_check(telegram_id)
+    if has_draft or has_published:
+        message_text = """Выберите раздел Ваших отзывов для просмотра и редактирования
+        - 📝 Черновик отзывов
+        - 📢 Опубликованные отзывы """
+        keyboard = await KbReview.kb_type_review()
+    elif not has_draft and not has_published:
+        message_text = """📝 У вас пока нет отзывов.\n\nВы можете оставить отзыв на любую купленную книгу"""
+        keyboard = await KbReview.kb_no_review()
+    await callback.message.edit_text(
+        text=message_text,
+        reply_markup=keyboard,
     )
     await callback.answer()
 
@@ -187,12 +223,12 @@ async def cart(callback: CallbackQuery, state: FSMContext):
             )
         else:
             await callback.message.edit_text(
-                f"    🛒Корзина\n📖{''.join(list_of_books)}\n\nВаш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
+                f"    🛒Корзина\n{''.join(list_of_books)}\n\n💳 Ваш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
                 reply_markup=await UserKeyboards.in_cart_no_address(telegram_id),
             )
     else:
         await callback.message.edit_text(
-            f"    🛒Ваша корзина пуста!\n\nВаш баланс - {user_balance}₽",
+            f"    🛒Ваша корзина пуста!\n\n💳 Ваш баланс - {user_balance}₽",
             reply_markup=await UserKeyboards.in_empty_cart(),
         )
 
@@ -324,10 +360,15 @@ async def reviews_first(callback: CallbackQuery):
 async def full_review(callback: CallbackQuery):
     review_id = int(callback.data.split("_")[1])
     book_id = int(callback.data.split("_")[2])
+    telegram_id = int(callback.from_user.id)
     review_data = await BookQueries.full_book_review(review_id)
+    if review_data["telegram_id"] == telegram_id:
+        own_review = True
+    else:
+        own_review = False
     text = await get_full_review(review_data)
     await callback.message.edit_text(
         text=text,
-        reply_markup=await UserKeyboards.kb_in_review(book_id),
+        reply_markup=await UserKeyboards.kb_in_review(own_review, review_id, book_id),
         parse_mode="Markdown",
     )

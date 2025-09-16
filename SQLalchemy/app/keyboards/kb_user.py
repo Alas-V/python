@@ -7,7 +7,11 @@ class UserKeyboards:
     async def main_menu() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="📦Мои заказы", callback_data="my_orders")],
+                [
+                    InlineKeyboardButton(
+                        text="👤Личный кабинет", callback_data="account"
+                    )
+                ],
                 [
                     InlineKeyboardButton(text="🛒Корзина", callback_data="cart"),
                     InlineKeyboardButton(text="📚Каталог", callback_data="catalog"),
@@ -21,6 +25,21 @@ class UserKeyboards:
                 [InlineKeyboardButton(text="ℹ️Информация", callback_data="information")],
             ]
         )
+
+    @staticmethod
+    async def kb_account() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📦Мои заказы", callback_data="my_orders")],
+                [InlineKeyboardButton(text="📝Мои отзывы", callback_data="my_reviews")],
+                [
+                    InlineKeyboardButton(
+                        text="🔙Главное меню", callback_data="main_menu"
+                    )
+                ],
+            ],
+        )
+        pass
 
     @staticmethod
     async def show_genre() -> InlineKeyboardMarkup:
@@ -103,7 +122,7 @@ class UserKeyboards:
             )
         keyboard.append(
             [
-                InlineKeyboardButton(text="🔙 Назад к жанрам", callback_data="catalog"),
+                InlineKeyboardButton(text="🔙Назад к жанрам", callback_data="catalog"),
                 InlineKeyboardButton(text="🔙Главное меню", callback_data="main_menu"),
             ]
         )
@@ -356,19 +375,48 @@ class UserKeyboards:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
-    async def kb_in_review(book_id) -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
+    async def kb_in_review(
+        own_review, review_id, book_id=False
+    ) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu"),
+            ],
+        ]
+        if book_id:
+            keyboard.insert(
+                0,
                 [
                     InlineKeyboardButton(
                         text="📚 Вернуться к книге", callback_data=f"book_{book_id}"
                     )
                 ],
+            )
+            keyboard.insert(
+                1,
                 [
                     InlineKeyboardButton(
                         text="🔙 Назад", callback_data=f"reviews_on_book_{book_id}"
                     ),
-                    InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu"),
                 ],
-            ]
-        )
+            )
+        if own_review:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="📝Редактировать отзыв",
+                        callback_data=f"review_edit_{review_id}",
+                    )
+                ],
+            )
+            keyboard.insert(
+                1,
+                [
+                    InlineKeyboardButton(
+                        text="🗑️Удалить отзыв",
+                        callback_data=f"reviews_delete_{review_id}",
+                    ),
+                ],
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)

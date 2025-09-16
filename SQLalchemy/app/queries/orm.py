@@ -137,7 +137,7 @@ class BookQueries:
                     func.avg(Review.review_rating).label("book_rating"),
                 )
                 .select_from(Book)
-                .where(and_(Book.book_genre == genre, Review.finished))
+                .where(and_(Book.book_genre == genre, Review.published))
                 .join(Review, Book.book_id == Review.book_id)
                 .group_by(Book.book_id, Book.book_title)
                 .order_by(Book.sale_value.desc(), Book.book_title)
@@ -167,7 +167,7 @@ class BookQueries:
                 .select_from(Book)
                 .join(Review, Review.book_id == Book.book_id)
                 .join(Author, Book.author_id == Author.author_id, isouter=True)
-                .where(and_(Book.book_id == book_id_int, Review.finished))
+                .where(and_(Book.book_id == book_id_int, Review.published))
                 .group_by(
                     Book.book_id,
                     Author.author_id,
@@ -190,7 +190,7 @@ class BookQueries:
                 )
                 .join(Author, Book.author_id == Author.author_id, isouter=True)
                 .join(Review, Review.book_id == Book.book_id, isouter=True)
-                .where(and_(Book.book_id == book_id_int, Review.finished))
+                .where(and_(Book.book_id == book_id_int, Review.published))
                 .group_by(Book.book_id, Book.book_title, Author.author_name)
             )
             book_result = await session.execute(book_query)
@@ -203,7 +203,7 @@ class BookQueries:
                     Review.review_body,
                 )
                 .join(User, Review.telegram_id == User.telegram_id, isouter=True)
-                .where(and_(Review.book_id == book_id_int, Review.finished))
+                .where(and_(Review.book_id == book_id_int, Review.published))
             )
             reviews_result = await session.execute(reviews_query)
             reviews = reviews_result.mappings().all()
@@ -217,6 +217,7 @@ class BookQueries:
                 Review.review_title,
                 Review.review_body,
                 Review.created_at,
+                Review.telegram_id,
             ).where(Review.review_id == review_id)
             reviews_result = await session.execute(stmt)
             reviews = reviews_result.mappings().first()
@@ -304,7 +305,7 @@ class SaleQueries:
                     func.avg(Review.review_rating).label("book_rating"),
                 )
                 .where(
-                    and_(Book.book_genre == genre, Book.book_on_sale, Review.finished)
+                    and_(Book.book_genre == genre, Book.book_on_sale, Review.published)
                 )
                 .group_by(Book.book_id)
                 .order_by(Book.sale_value.desc())
@@ -320,6 +321,72 @@ class UserQueries:
     #         user = await session.get(User, user_id)
     #         user.username = new_username
     #         await session.commit()
+
+    @staticmethod
+    async def draft_reviews(telegram_id):
+        async with AsyncSessionLocal() as session:
+            has_draft = await session.execute(
+                select(Review.review_id).where(
+                    and_(Review.telegram_id == telegram_id, Review.published.is_(False))
+                )
+            )
+            draft = has_draft.first()
+            if draft:
+                return True
+            return False
+
+    @staticmethod
+    async def published_check(telegram_id):
+        async with AsyncSessionLocal() as session:
+            has_published = await session.execute(
+                select(Review.review_id).where(
+                    and_(Review.telegram_id == telegram_id, Review.published)
+                )
+            )
+            published = has_published.first()
+            if published:
+                return True
+            return False
+
+    @staticmethod
+    async def get_user_published_reviews(telegram_id):
+        async with AsyncSessionLocal() as session:
+            reviews_query = (
+                select(
+                    Review.review_id,
+                    Review.review_rating,
+                    Review.review_title,
+                    Review.review_body,
+                    Book.book_title,
+                )
+                .join(Book, Book.book_id == Review.book_id)
+                .where(and_(Review.telegram_id == telegram_id, Review.published))
+                .order_by(Review.updated_at)
+            )
+            reviews_result = await session.execute(reviews_query)
+            reviews = reviews_result.mappings().all()
+            return reviews
+
+    @staticmethod
+    async def get_user_draft(telegram_id):
+        async with AsyncSessionLocal() as session:
+            drafts = await session.execute(
+                select(
+                    Review.review_id,
+                    Review.review_rating,
+                    Review.review_title,
+                    Review.review_body,
+                    Book.book_title,
+                    Book.book_id,
+                )
+                .join(Book, Book.book_id == Review.book_id)
+                .where(
+                    and_(Review.telegram_id == telegram_id, Review.published.is_(False))
+                )
+                .order_by(Review.updated_at)
+            )
+            reviews = drafts.mappings().all()
+            return reviews
 
     @staticmethod
     async def get_user_balance(telegram_id) -> int:
@@ -375,6 +442,7 @@ class ReviewQueries:
                 review_body=None,
                 telegram_id=telegram_id,
                 finished=False,
+                published=False,
             )
             session.add(new_review)
             await session.flush()
@@ -427,6 +495,28 @@ class ReviewQueries:
                 return "title"
             elif review.review_body is None:
                 return "body"
+
+    @staticmethod
+    async def delete_review_sure(review_id, telegram_id):
+        async with AsyncSessionLocal() as session:
+            try:
+                result = await session.execute(
+                    select(Review).where(
+                        and_(
+                            Review.review_id == review_id,
+                            Review.telegram_id == telegram_id,
+                        )
+                    )
+                )
+                review = result.scalar_one_or_none()
+                if review:
+                    await session.delete(review)
+                    await session.commit()
+                    return True
+                return False
+            except Exception as e:
+                await session.rollback()
+                return False
 
 
 class OrderQueries:
@@ -823,6 +913,7 @@ class DBData:
                 review_body="The best book I've ever read",
                 telegram_id=123123123,
                 finished=True,
+                published=True,
             )
             second_review = Review(
                 book_id=2,
@@ -831,6 +922,7 @@ class DBData:
                 review_body="I mean maybe not the best book that I've known but it still kind nice",
                 telegram_id=1241413412,
                 finished=True,
+                published=True,
             )
             session.add_all(
                 [
@@ -898,6 +990,7 @@ class DBData:
                     review_body=fake.paragraph(nb_sentences=3)[:900],
                     created_at=datetime.now() - timedelta(days=random.randint(0, 365)),
                     finished=True,
+                    published=True,
                 )
                 for _ in range(70)
             ]
@@ -912,6 +1005,7 @@ class DBData:
                     review_body=fake.paragraph(nb_sentences=3)[:900],
                     created_at=datetime.now() - timedelta(days=random.randint(0, 365)),
                     finished=True,
+                    published=True,
                 )
                 for _ in range(250)
             ]

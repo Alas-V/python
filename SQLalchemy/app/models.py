@@ -170,6 +170,7 @@ class Review(Base):
         BigInteger, ForeignKey("users.telegram_id")
     )
     finished: Mapped[bool] = mapped_column(Boolean, server_default="FALSE")
+    published: Mapped[bool] = mapped_column(Boolean, server_default="FALSE")
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
     reviewed_book: Mapped["Book"] = relationship(back_populates="reviews")

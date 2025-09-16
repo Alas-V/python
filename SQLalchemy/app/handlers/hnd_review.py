@@ -2,7 +2,7 @@ from aiogram import Bot, Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from utils.states import ReviewState
-from queries.orm import BookQueries, ReviewQueries
+from queries.orm import BookQueries, ReviewQueries, UserQueries
 from text_templates import book_for_review, get_full_review
 from keyboards.kb_review import KbReview
 import asyncio
@@ -107,6 +107,98 @@ async def after_rating(callback: CallbackQuery, state: FSMContext):
         )
         await asyncio.sleep(1)
         await temp_mess.delete()
+
+
+@review_router.callback_query(F.data.startswith("publish_review_"))
+async def publish_new_review(callback: CallbackQuery, state: FSMContext):
+    bot = callback.message.bot
+    data = await state.get_data()
+    review_id = data["review_id"]
+    book_id = data["book_id"]
+    main_message_id = data["main_message_id"]
+    last_hint_id = data.get("last_hint_id")
+    review_id = int(callback.data.split("_")[2])
+    await ReviewQueries.add_value_column(review_id, "published", True)
+    await delete_messages(bot, callback.message.chat.id, [last_hint_id])
+    review_data = await BookQueries.full_book_review(review_id)
+    text = "✅Отзыв опубликован!✅"
+    text += await get_full_review(review_data, True)
+    await bot.edit_message_text(
+        chat_id=callback.message.chat.id,
+        message_id=main_message_id,
+        text=f"{text}",
+        reply_markup=await KbReview.after_published(book_id, review_id),
+        parse_mode="Markdown",
+    )
+
+
+@review_router.callback_query(F.data == "drafts")
+async def drafts(callback: CallbackQuery):
+    telegram_id = int(callback.from_user.id)
+    has_draft = await UserQueries.draft_reviews(telegram_id)
+    if has_draft:
+        drafts = await UserQueries.get_user_draft(telegram_id)
+        message_text = """✏️ Выберите черновик для редактирования или удаления"""
+        keyboard = await KbReview.kb_own_reviews(drafts)
+    elif not has_draft:
+        message_text = """❌ У вас сейчас нет черновиков"""
+        keyboard = await KbReview.kb_no_review()
+    await callback.message.edit_text(
+        text=message_text,
+        reply_markup=keyboard,
+    )
+    await callback.answer()
+
+
+@review_router.callback_query(F.data == "published")
+async def published(callback: CallbackQuery):
+    telegram_id = int(callback.from_user.id)
+    has_published = await UserQueries.published_check(telegram_id)
+    if has_published:
+        published = await UserQueries.get_user_published_reviews(telegram_id)
+        message_text = """✏️ Выберите отзыв для редактирования или удаления"""
+        keyboard = await KbReview.kb_own_reviews(published)
+    elif not has_published:
+        message_text = """❌ У вас сейчас нет опубликованных отзывов"""
+        keyboard = await KbReview.kb_no_review()
+    await callback.message.edit_text(
+        text=message_text,
+        reply_markup=keyboard,
+    )
+    await callback.answer()
+
+
+@review_router.callback_query(F.data.startswith("reviews_delete_"))
+async def review_delete(callback: CallbackQuery):
+    review_id = int(callback.data.split("_")[2])
+    await callback.message.edit_text(
+        text="Вы уверены, что хотите удалить отзыв?\n\nЭто действие будет невозможно отменить",
+        reply_markup=await KbReview.sure_delete(review_id),
+    )
+
+
+@review_router.callback_query(F.data.startswith("reviews_sure_delete_"))
+async def review_delete_sure(callback: CallbackQuery):
+    review_id = int(callback.data.split("_")[3])
+    telegram_id = int(callback.from_user.id)
+    deleted = await ReviewQueries.delete_review_sure(review_id, telegram_id)
+    if deleted:
+        await callback.message.edit_text(
+            text=" 🗑️ Отзыв успешно удален",
+            reply_markup=await KbReview.review_after_delete(),
+        )
+        return
+    else:
+        await callback.message.edit_text(
+            text=" ❌ Произошла ошибка, пожалуйста, повторите позднее ",
+            reply_markup=await KbReview.review_after_delete(),
+        )
+    return
+
+
+@review_router.callback_query(F.data == "review_edit_")
+async def edit_review(callback: CallbackQuery):
+    pass
 
 
 # FSM context
