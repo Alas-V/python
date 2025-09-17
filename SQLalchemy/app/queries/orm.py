@@ -358,6 +358,7 @@ class UserQueries:
                     Review.review_title,
                     Review.review_body,
                     Book.book_title,
+                    Book.book_id,
                 )
                 .join(Book, Book.book_id == Review.book_id)
                 .where(and_(Review.telegram_id == telegram_id, Review.published))
@@ -517,6 +518,34 @@ class ReviewQueries:
             except Exception as e:
                 await session.rollback()
                 return False
+
+    @staticmethod
+    async def review_exist(telegram_id: int, book_id: int):
+        async with AsyncSessionLocal() as session:
+            review = await session.execute(
+                select(Review.review_id).where(
+                    and_(Review.telegram_id == telegram_id, Review.book_id == book_id)
+                )
+            )
+            result = review.scalar_one_or_none()
+            return result
+
+    @staticmethod
+    async def check_review_completion(review_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    Review.review_rating,
+                    Review.review_title,
+                    Review.review_body,
+                ).where(Review.review_id == review_id)
+            )
+            data = result.first()
+            if not data:
+                return False
+            rating, title, body = data
+            is_complete = all([rating, body, title])
+            return is_complete
 
 
 class OrderQueries:

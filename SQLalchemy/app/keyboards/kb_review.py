@@ -18,7 +18,7 @@ class KbReview:
                     text="📚 Назад к книге", callback_data=f"book_{book_id}"
                 ),
                 InlineKeyboardButton(
-                    text="🗑️ Удалить отзыв", callback_data=f"review_delete_{review_id}"
+                    text="🗑️ Удалить отзыв", callback_data=f"reviewsdelete_{review_id}"
                 ),
             ],
         ]
@@ -152,7 +152,7 @@ class KbReview:
                 [
                     InlineKeyboardButton(
                         text="🗑️ Удалить",
-                        callback_data=f"review_sure_delete_{review_id}",
+                        callback_data=f"reviewssure_delete_{review_id}",
                     )
                 ],
                 [InlineKeyboardButton(text="🔙 Назад", callback_data="my_reviews")],

@@ -9,7 +9,7 @@ class UserKeyboards:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="👤Личный кабинет", callback_data="account"
+                        text="🔥 Товары со скидкой 🔥", callback_data="sale_menu"
                     )
                 ],
                 [
@@ -18,28 +18,16 @@ class UserKeyboards:
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🔥 Товары со скидкой", callback_data="sale_menu"
-                    )
+                        text="📦Мои заказы", callback_data="my_orders"
+                    ),
+                    InlineKeyboardButton(
+                        text="📝Мои отзывы", callback_data="my_reviews"
+                    ),
                 ],
                 [InlineKeyboardButton(text="📨 Поддержка", callback_data="support")],
                 [InlineKeyboardButton(text="ℹ️Информация", callback_data="information")],
             ]
         )
-
-    @staticmethod
-    async def kb_account() -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="📦Мои заказы", callback_data="my_orders")],
-                [InlineKeyboardButton(text="📝Мои отзывы", callback_data="my_reviews")],
-                [
-                    InlineKeyboardButton(
-                        text="🔙Главное меню", callback_data="main_menu"
-                    )
-                ],
-            ],
-        )
-        pass
 
     @staticmethod
     async def show_genre() -> InlineKeyboardMarkup:

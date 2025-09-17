@@ -81,29 +81,14 @@ async def menu(callback: CallbackQuery, state: FSMContext):
 
 Выберите раздел:  
 
-    - 👤 Личный кабинет(Ваш баланс, отзывы, заказы)
-    - 🛒 Корзина 
-    - 📚 Каталог       
-    - 🔥 Товары со скидкой  
-    - ℹ️ Информация 
+                - 🔥 Товары со скидкой  
+
+    - 🛒 Корзина         - 📚 Каталог
+    - 📦 Заказы           - 📝 Отзывы
+    - 📨 Поддержка      - ℹ️ Информация 
     """
     await callback.answer("Возвращение в Меню")
     await callback.message.edit_text(text, reply_markup=await UserKeyboards.main_menu())
-
-
-@user_router.callback_query(F.data == "account")
-async def account(callback: CallbackQuery):
-    text = """
-    Личный кабинет
-
-Выберите раздел:
-
-    - 📦 Заказы
-    - 📝 Отзыва 
-    """
-    await callback.message.edit_text(
-        text, reply_markup=await UserKeyboards.kb_account()
-    )
 
 
 @user_router.callback_query(F.data == "information")

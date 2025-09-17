@@ -29,6 +29,35 @@ async def delete_messages(bot, chat_id: int, message_ids: list):
 async def start_review(callback: CallbackQuery, state: FSMContext):
     book_id = int(callback.data.split("_")[2])
     telegram_id = int(callback.from_user.id)
+    review_id = await ReviewQueries.review_exist(telegram_id, book_id)
+    if review_id:
+        review_data = await BookQueries.full_book_review(review_id)
+        text = await get_full_review(review_data, True)
+        main_message = await callback.message.edit_text(
+            text=text,
+            reply_markup=await KbReview.review_main(book_id, review_id),
+            parse_mode="Markdown",
+        )
+        is_complete = await ReviewQueries.check_review_completion(review_id)
+        if not is_complete:
+            next_field = await ReviewQueries.review_get_next_empty_field(
+                review_id,
+            )
+        await state.update_data(
+            review_id=review_id,
+            main_message_id=main_message.message_id,
+            book_id=book_id,
+        )
+        field_to_state = {
+            "rating": ReviewState.rating,
+            "title": ReviewState.title,
+            "body": ReviewState.body,
+        }
+        await state.set_state(field_to_state[next_field])
+        hint = await callback.message.answer(hints[next_field])
+        await state.update_data(last_hint_id=hint.message_id)
+        await callback.answer(text="У вас уже есть отзыв на эту книгу")
+        return
     review_id = await ReviewQueries.new_review(telegram_id, book_id)
     review_data = await BookQueries.full_book_review(review_id)
     text = await get_full_review(review_data, True)
@@ -168,18 +197,18 @@ async def published(callback: CallbackQuery):
     await callback.answer()
 
 
-@review_router.callback_query(F.data.startswith("reviews_delete_"))
+@review_router.callback_query(F.data.startswith("reviewsdelete_"))
 async def review_delete(callback: CallbackQuery):
-    review_id = int(callback.data.split("_")[2])
+    review_id = int(callback.data.split("_")[1])
     await callback.message.edit_text(
         text="Вы уверены, что хотите удалить отзыв?\n\nЭто действие будет невозможно отменить",
         reply_markup=await KbReview.sure_delete(review_id),
     )
 
 
-@review_router.callback_query(F.data.startswith("reviews_sure_delete_"))
+@review_router.callback_query(F.data.startswith("reviewssure_delete_"))
 async def review_delete_sure(callback: CallbackQuery):
-    review_id = int(callback.data.split("_")[3])
+    review_id = int(callback.data.split("_")[2])
     telegram_id = int(callback.from_user.id)
     deleted = await ReviewQueries.delete_review_sure(review_id, telegram_id)
     if deleted:
