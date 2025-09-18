@@ -10,7 +10,7 @@ class KbReview:
             [
                 InlineKeyboardButton(
                     text="➕  Изменить отзыв",
-                    callback_data=f"review_change_{review_id}_{book_id}",
+                    callback_data=f"reviewchange_{review_id}_{book_id}",
                 )
             ],
             [
@@ -35,19 +35,29 @@ class KbReview:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
-    async def rating_book(book_id: int, review_id) -> InlineKeyboardMarkup:
+    async def rating_book(
+        book_id: int, review_id, guided: bool = True
+    ) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
                         text="⭐⭐⭐⭐⭐",
-                        callback_data="rating_5",
+                        callback_data=f"rating_5_{guided}",
                     )
                 ],
-                [InlineKeyboardButton(text="⭐⭐⭐⭐", callback_data="rating_4")],
-                [InlineKeyboardButton(text="⭐⭐⭐", callback_data="rating_3")],
-                [InlineKeyboardButton(text="⭐⭐", callback_data="rating_2")],
-                [InlineKeyboardButton(text="⭐", callback_data="rating_1")],
+                [
+                    InlineKeyboardButton(
+                        text="⭐⭐⭐⭐", callback_data=f"rating_4_{guided}"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="⭐⭐⭐", callback_data=f"rating_3_{guided}"
+                    )
+                ],
+                [InlineKeyboardButton(text="⭐⭐", callback_data=f"rating_2_{guided}")],
+                [InlineKeyboardButton(text="⭐", callback_data=f"rating_1_{guided}")],
             ]
         )
 
@@ -93,11 +103,11 @@ class KbReview:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="📚Каталог", callback_data="catalog")],
-                [InlineKeyboardButton(text="🔙 Назад", callback_data="account")],
                 [
+                    InlineKeyboardButton(text="🔙 Назад", callback_data="account"),
                     InlineKeyboardButton(
                         text="🔙Главное меню", callback_data="main_menu"
-                    )
+                    ),
                 ],
             ]
         )
@@ -156,5 +166,33 @@ class KbReview:
                     )
                 ],
                 [InlineKeyboardButton(text="🔙 Назад", callback_data="my_reviews")],
+            ]
+        )
+
+    @staticmethod
+    async def kb_change(review_id: int, book_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⭐ Оценка отзыва",
+                        callback_data=f"changereview_rating_{review_id}_{book_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="✏️ Заголовок",
+                        callback_data=f"changereview_title_{review_id}_{book_id}",
+                    ),
+                    InlineKeyboardButton(
+                        text="📝 Текст",
+                        callback_data=f"changereview_body_{review_id}_{book_id}",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data=f"new_review_{book_id}"
+                    )
+                ],
             ]
         )

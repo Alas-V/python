@@ -15,6 +15,12 @@ hints = {
     "body": "📝 *Напишите Ваш отзыв на книгу* (1000 символов)",
 }
 
+review_model = {
+    "rating": "review_rating",
+    "title": "review_title",
+    "body": "review_body",
+}
+
 
 async def delete_messages(bot, chat_id: int, message_ids: list):
     for message_id in message_ids:
@@ -56,7 +62,6 @@ async def start_review(callback: CallbackQuery, state: FSMContext):
         await state.set_state(field_to_state[next_field])
         hint = await callback.message.answer(hints[next_field])
         await state.update_data(last_hint_id=hint.message_id)
-        await callback.answer(text="У вас уже есть отзыв на эту книгу")
         return
     review_id = await ReviewQueries.new_review(telegram_id, book_id)
     review_data = await BookQueries.full_book_review(review_id)
@@ -92,6 +97,8 @@ async def after_rating(callback: CallbackQuery, state: FSMContext):
     main_message_id = data["main_message_id"]
     last_hint_id = data.get("last_hint_id")
     stars = int(callback.data.split("_")[1])
+    guided_str = callback.data.split("_")[2]
+    guided = guided_str.lower() == "true"
     is_finished = await ReviewQueries.add_value_column(
         review_id, "review_rating", stars
     )
@@ -105,7 +112,14 @@ async def after_rating(callback: CallbackQuery, state: FSMContext):
         reply_markup=await KbReview.review_main(book_id, review_id, is_finished),
         parse_mode="Markdown",
     )
-    if not is_finished:
+    if not guided:
+        temp_mess = await callback.message.answer(
+            "✅ *Данные обновлены*", parse_mode="Markdown"
+        )
+        await asyncio.sleep(1)
+        await temp_mess.delete()
+        return
+    if not is_finished and guided:
         temp_mess = await callback.message.answer(
             "✅ *Данные обновлены*", parse_mode="Markdown"
         )
@@ -225,12 +239,85 @@ async def review_delete_sure(callback: CallbackQuery):
     return
 
 
-@review_router.callback_query(F.data == "review_edit_")
-async def edit_review(callback: CallbackQuery):
-    pass
+@review_router.callback_query(F.data.startswith("reviewchange_"))
+async def edit_review(callback: CallbackQuery, state: FSMContext):
+    review_id = int(callback.data.split("_")[1])
+    book_id = int(callback.data.split("_")[2])
+    bot = callback.message.bot
+    data = await state.get_data()
+    main_message_id = data["main_message_id"]
+    last_hint_id = data.get("last_hint_id")
+    user_messages = data.get("user_messages", [])
+    await delete_messages(bot, callback.message.chat.id, [last_hint_id] + user_messages)
+    review_data = await BookQueries.full_book_review(review_id)
+    text = await get_full_review(review_data, True)
+    text += "\nВыберите пункт для изменения: "
+    await bot.edit_message_text(
+        chat_id=callback.message.chat.id,
+        message_id=main_message_id,
+        text=f"{text}",
+        reply_markup=await KbReview.kb_change(review_id, book_id),
+        parse_mode="Markdown",
+    )
+
+
+@review_router.callback_query(F.data.startswith("changereview_"))
+async def change_review(callback: CallbackQuery, state: FSMContext):
+    field = str(callback.data.split("_")[1])
+    review_id = int(callback.data.split("_")[2])
+    book_id = int(callback.data.split("_")[3])
+    await state.update_data(
+        review_id=review_id,
+        column=field,
+        message_id=callback.message.message_id,
+    )
+    await state.set_state(ReviewState.editing_field)
+    if field == "rating":
+        hint = await callback.message.answer(
+            " Как бы вы оценили книгу (от 1⭐ до 5⭐)",
+            reply_markup=await KbReview.rating_book(book_id, review_id, guided=False),
+            parse_mode="Markdown",
+        )
+    else:
+        hint = await callback.message.answer(hints[field])
+    await state.update_data(last_hint_id=hint.message_id, user_messages=[])
+    await callback.answer()
 
 
 # FSM context
+
+
+@review_router.message(ReviewState.editing_field)
+async def review_editing_field(message: Message, state: FSMContext):
+    bot = message.bot
+    data = await state.get_data()
+    book_id = data["book_id"]
+    review_id = data["review_id"]
+    field = data["column"]
+    column = review_model[field]
+    main_message_id = data["message_id"]
+    last_hint_id = data.get("last_hint_id")
+    user_messages = data.get("user_messages", [])
+    new_value = message.text
+    await ReviewQueries.add_value_column(review_id, column, new_value)
+    if user_messages is not None:
+        user_messages.append(message.message_id)
+    if last_hint_id:
+        await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    is_finished = await ReviewQueries.check_review_completion(review_id)
+    review_data = await BookQueries.full_book_review(review_id)
+    text = await get_full_review(review_data, True)
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=main_message_id,
+        text=f"{text}",
+        reply_markup=await KbReview.review_main(book_id, review_id, is_finished),
+        parse_mode="Markdown",
+    )
+    temp_msg = await message.answer("✅ Отзыв обновлен")
+    await asyncio.sleep(1)
+    await temp_msg.delete()
+    await state.clear()
 
 
 @review_router.message(ReviewState.title)

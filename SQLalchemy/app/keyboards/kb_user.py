@@ -368,6 +368,9 @@ class UserKeyboards:
     ) -> InlineKeyboardMarkup:
         keyboard = [
             [
+                InlineKeyboardButton(
+                    text="🔙 Назад", callback_data=f"reviews_on_book_{book_id}"
+                ),
                 InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu"),
             ],
         ]
@@ -380,14 +383,6 @@ class UserKeyboards:
                     )
                 ],
             )
-            keyboard.insert(
-                1,
-                [
-                    InlineKeyboardButton(
-                        text="🔙 Назад", callback_data=f"reviews_on_book_{book_id}"
-                    ),
-                ],
-            )
         if own_review:
             keyboard.insert(
                 0,
@@ -395,15 +390,10 @@ class UserKeyboards:
                     InlineKeyboardButton(
                         text="📝Редактировать отзыв",
                         callback_data=f"review_edit_{review_id}",
-                    )
-                ],
-            )
-            keyboard.insert(
-                1,
-                [
+                    ),
                     InlineKeyboardButton(
                         text="🗑️Удалить отзыв",
-                        callback_data=f"reviews_delete_{review_id}",
+                        callback_data=f"reviewsdelete_{review_id}",
                     ),
                 ],
             )

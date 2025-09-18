@@ -77,16 +77,16 @@ async def menu(callback: CallbackQuery, state: FSMContext):
             await delete_messages(bot, callback.message.chat.id, [last_hint_id])
         await state.clear()
     text = """
-        📚 Главное меню Book Bot *DEMO*, твой персональный помощник в мире книг.
+📚 Главное меню Book Bot *DEMO*. Твой персональный помощник в мире книг.
 
-Выберите раздел:  
+Выберите раздел:
 
-                - 🔥 Товары со скидкой  
+            🔥 Товары со скидкой
 
-    - 🛒 Корзина         - 📚 Каталог
-    - 📦 Заказы           - 📝 Отзывы
-    - 📨 Поддержка      - ℹ️ Информация 
-    """
+    🛒 Корзина             📚 Каталог
+    📦 Заказы               📝 Отзывы
+    📨 Поддержка        ℹ️ Информация
+"""
     await callback.answer("Возвращение в Меню")
     await callback.message.edit_text(text, reply_markup=await UserKeyboards.main_menu())
 

@@ -18,7 +18,7 @@ class ReviewState(StatesGroup):
     rating = State()
     title = State()
     body = State()
-    editing_review_field = State()
+    editing_field = State()
 
 
 class SupportState(StatesGroup):
