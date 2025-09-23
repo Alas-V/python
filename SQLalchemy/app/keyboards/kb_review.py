@@ -170,29 +170,41 @@ class KbReview:
         )
 
     @staticmethod
-    async def kb_change(review_id: int, book_id: int) -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
+    async def kb_change(
+        review_id: int, book_id: int, is_finished: bool = False
+    ) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="⭐ Оценка отзыва",
+                    callback_data=f"changereview_rating_{review_id}_{book_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✏️ Заголовок",
+                    callback_data=f"changereview_title_{review_id}_{book_id}",
+                ),
+                InlineKeyboardButton(
+                    text="📝 Текст",
+                    callback_data=f"changereview_body_{review_id}_{book_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад", callback_data=f"new_review_{book_id}"
+                )
+            ],
+        ]
+        if is_finished:
+            keyboard.insert(
+                0,
                 [
                     InlineKeyboardButton(
-                        text="⭐ Оценка отзыва",
-                        callback_data=f"changereview_rating_{review_id}_{book_id}",
+                        text="✅Опубликовать отзыв",
+                        callback_data=f"publish_review_{review_id}",
                     )
                 ],
-                [
-                    InlineKeyboardButton(
-                        text="✏️ Заголовок",
-                        callback_data=f"changereview_title_{review_id}_{book_id}",
-                    ),
-                    InlineKeyboardButton(
-                        text="📝 Текст",
-                        callback_data=f"changereview_body_{review_id}_{book_id}",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="🔙 Назад", callback_data=f"new_review_{book_id}"
-                    )
-                ],
-            ]
-        )
+            )
+
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
