@@ -65,6 +65,13 @@ class BookStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class AppealStatus(str, Enum):
+    CREATED = "created"
+    IN_WORK = "in_work"
+    CLOSED_BY_USER = "closed_by_user"
+    CLOSED_BY_ADMIN = "closed_by_admin"
+
+
 class Author(Base):
     __tablename__ = "authors"
     author_id: Mapped[intpk]
@@ -153,7 +160,7 @@ class User(Base):
     )
     order_data: Mapped["OrderData"] = relationship(back_populates="user")
     address: Mapped["UserAddress"] = relationship(back_populates="user")
-    appeal: Mapped["SupportMessages"] = relationship(back_populates="user")
+    appeals: Mapped[List["SupportAppeal"]] = relationship(back_populates="user")
 
 
 class Review(Base):
@@ -216,14 +223,44 @@ class UserAddress(Base):
     user: Mapped["User"] = relationship(back_populates="address")
 
 
-class SupportMessages(Base):
+class AdminMessage(Base):
+    __tablename__ = "admin_messages"
+    message_id: Mapped[intpk]
+    admin_message: Mapped[str] = mapped_column(String(400))
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id")
+    )
+    appeal_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("support_appeals.appeal_id")
+    )
+    created_date: Mapped[created_at]
+    appeal: Mapped["SupportAppeal"] = relationship(back_populates="admin_messages")
+
+
+class SupportMessage(Base):
     __tablename__ = "support_messages"
+    message_id: Mapped[intpk]
+    user_message: Mapped[str] = mapped_column(String(600))
+    created_date: Mapped[created_at]
+    updated_at: Mapped[updated_at]
+    appeal_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("support_appeals.appeal_id")
+    )
+    appeal: Mapped["SupportAppeal"] = relationship(back_populates="user_messages")
+
+
+class SupportAppeal(Base):
+    __tablename__ = "support_appeals"
     appeal_id: Mapped[intpk]
     telegram_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.telegram_id")
     )
-    user_message: Mapped[str] = mapped_column(String(600))
-    admin_answer: Mapped[str] = mapped_column(String(400))
-    created_date: Mapped[created_at]
-    updated_at: Mapped[updated_at]
+    user_messages: Mapped[List["SupportMessage"]] = relationship(
+        back_populates="appeal", cascade="all, delete-orphan"
+    )
+    admin_messages: Mapped[List["AdminMessage"]] = relationship(
+        back_populates="appeal", cascade="all, delete-orphan"
+    )
+
+    status: Mapped[AppealStatus] = mapped_column(server_default=AppealStatus.CREATED)
     user: Mapped["User"] = relationship(back_populates="appeal")
