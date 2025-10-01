@@ -246,6 +246,7 @@ class SupportMessage(Base):
     appeal_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("support_appeals.appeal_id")
     )
+    created_date: Mapped[created_at]
     appeal: Mapped["SupportAppeal"] = relationship(back_populates="user_messages")
 
 
@@ -261,6 +262,7 @@ class SupportAppeal(Base):
     admin_messages: Mapped[List["AdminMessage"]] = relationship(
         back_populates="appeal", cascade="all, delete-orphan"
     )
-
+    created_date: Mapped[created_at]
+    updated_at: Mapped[updated_at]
     status: Mapped[AppealStatus] = mapped_column(server_default=AppealStatus.CREATED)
     user: Mapped["User"] = relationship(back_populates="appeal")

@@ -11,12 +11,15 @@ from models import (
     CartItem,
     UserAddress,
     OrderData,
+    AdminMessage,
+    SupportMessage,
+    SupportAppeal,
 )
 from faker import Faker
 import random
 from datetime import datetime, timedelta
 from sqlalchemy import case, select, text, func, and_, update, or_
-
+from sqlalchemy.orm import selectinload
 
 fake = Faker("ru_RU")
 
@@ -546,6 +549,46 @@ class ReviewQueries:
             rating, title, body = data
             is_complete = all([rating, body, title])
             return is_complete
+
+
+class SupportQueries:
+    @staticmethod
+    async def check_if_exist(telegram_id):
+        async with AsyncSessionLocal() as session:
+            ticket = await session.execute(
+                select(SupportAppeal).where(SupportAppeal.telegram_id == telegram_id)
+            )
+            result = ticket.scalar_one_or_none()
+            return result
+
+    @staticmethod
+    async def get_appeals_count(telegram_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(func.count(SupportAppeal.appeal_id)).where(
+                    SupportAppeal.telegram_id == telegram_id
+                )
+            )
+            return result.scalar_one()
+
+    @staticmethod
+    async def get_small_appeals_paginated(
+        telegram_id: int, page: int = 0, limit: int = 5
+    ):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    SupportAppeal.appeal_id,
+                    SupportAppeal.created_date,
+                    SupportAppeal.status,
+                )
+                .where(SupportAppeal.telegram_id == telegram_id)
+                .order_by(SupportAppeal.created_date.desc())
+                .offset(page * limit)
+                .limit(limit)
+            )
+            appeals = result.tuples().all()
+            return appeals
 
 
 class OrderQueries:
