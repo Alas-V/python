@@ -590,6 +590,18 @@ class SupportQueries:
             appeals = result.tuples().all()
             return appeals
 
+    @staticmethod
+    async def create_new_appeal(telegram_id: int):
+        async with AsyncSessionLocal() as session:
+            appeal = SupportAppeal(
+                telegram_id=telegram_id,
+            )
+            session.add(appeal)
+            await session.flush()
+            appeal_id = appeal.appeal_id
+            await session.commit()
+            return appeal_id
+
 
 class OrderQueries:
     @staticmethod
@@ -944,10 +956,6 @@ class OrderQueries:
                 "items": items_text,
                 "items_list": items_list,
             }
-
-
-class SupportQueries:
-    pass
 
 
 class DBData:

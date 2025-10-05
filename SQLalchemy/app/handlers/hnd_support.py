@@ -5,6 +5,7 @@ from config import ADMIN_ID
 from utils.states import SupportState
 from queries.orm import SupportQueries
 from keyboards.kb_support import SupportKeyboards
+from text_templates import appeal_text s
 
 support_router = Router()
 
@@ -27,3 +28,27 @@ async def contact_support(callback: CallbackQuery, state: FSMContext):
             text="📨 Поддержка\n\nУ вас пока нет обращений. Создайте новое обращение:",
             reply_markup=await SupportKeyboards.support_main_menu(),
         )
+
+
+@support_router.callback_query(F.data == "new_appeal")
+async def new_appeal(callback: CallbackQuery, state: FSMContext):
+    telegram_id = int(callback.from_user.id)
+    appeal_id = await SupportQueries.create_new_appeal(telegram_id)
+    text = await 
+    main_message = await callback.message.edit_text(
+        text=,
+        reply_markup=await SupportKeyboards.kb_in_appeal(telegram_id),
+    )
+    hint_message = await callback.message.answer(
+        "*Введите Ваше обращения для поддержки, если возникли вопросы по заказу, пожалуйста, укажите Ваш номер заказа*",
+        parse_mode="Markdown",
+    )
+    await state.update_data(
+        appeal_id=appeal_id,
+        main_message_id=main_message.message_id,
+        last_hint_id=hint_message.message_id,
+        user_messages=[],
+        current_step="message_to_support",
+    )
+    await state.set_state(SupportState.message_to_support)
+    await callback.answer()

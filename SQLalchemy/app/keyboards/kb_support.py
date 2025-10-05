@@ -25,14 +25,14 @@ class SupportKeyboards:
             builder.button(text=button_text, callback_data=f"view_appeal_{appeal_id}")
         if total_count > 5:
             pagination_buttons = []
+            total_pages = (total_count + 4) // 5
             if page > 0:
                 pagination_buttons.append(
                     InlineKeyboardButton(
                         text="⬅️ Назад", callback_data=f"appeals_page_{page - 1}"
                     )
                 )
-            total_pages = (total_count + 4) // 5
-            if (page + 1) * 5 < total_count:
+            if page < total_pages - 1:
                 pagination_buttons.append(
                     InlineKeyboardButton(
                         text="Вперед ➡️", callback_data=f"appeals_page_{page + 1}"
@@ -40,21 +40,19 @@ class SupportKeyboards:
                 )
             if pagination_buttons:
                 builder.row(*pagination_buttons)
-        builder.row(
-            InlineKeyboardButton(
-                text="📝 Создать новое обращение", callback_data="new_appeal"
+            builder.row(
+                InlineKeyboardButton(
+                    text="📝 Создать новое обращение", callback_data="new_appeal"
+                )
             )
-        )
-        builder.row(
-            InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")
-        )
+            builder.row(
+                InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")
+            )
         return builder.as_markup()
 
     @staticmethod
     async def support_main_menu() -> InlineKeyboardMarkup:
         builder = InlineKeyboardBuilder()
-
-        builder.button(text="📨 Мои обращения", callback_data="my_appeals")
         builder.button(text="📝 Создать обращение", callback_data="new_appeal")
         builder.button(text="🔙 Главное меню", callback_data="main_menu")
         builder.adjust(1)

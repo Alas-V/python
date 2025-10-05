@@ -264,5 +264,7 @@ class SupportAppeal(Base):
     )
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
-    status: Mapped[AppealStatus] = mapped_column(server_default=AppealStatus.CREATED)
-    user: Mapped["User"] = relationship(back_populates="appeal")
+    status: Mapped[AppealStatus] = mapped_column(
+        String(30), server_default=AppealStatus.CREATED
+    )
+    user: Mapped["User"] = relationship(back_populates="appeals")
