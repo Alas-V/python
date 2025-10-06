@@ -66,7 +66,6 @@ class BookStatus(str, Enum):
 
 
 class AppealStatus(str, Enum):
-    CREATED = "created"
     IN_WORK = "in_work"
     CLOSED_BY_USER = "closed_by_user"
     CLOSED_BY_ADMIN = "closed_by_admin"
@@ -237,10 +236,10 @@ class AdminMessage(Base):
     appeal: Mapped["SupportAppeal"] = relationship(back_populates="admin_messages")
 
 
-class SupportMessage(Base):
-    __tablename__ = "support_messages"
+class UserMessage(Base):
+    __tablename__ = "user_messages"
     message_id: Mapped[intpk]
-    user_message: Mapped[str] = mapped_column(String(600))
+    message: Mapped[str] = mapped_column(String(600))
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
     appeal_id: Mapped[int] = mapped_column(
@@ -256,7 +255,7 @@ class SupportAppeal(Base):
     telegram_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.telegram_id")
     )
-    user_messages: Mapped[List["SupportMessage"]] = relationship(
+    user_messages: Mapped[List["UserMessage"]] = relationship(
         back_populates="appeal", cascade="all, delete-orphan"
     )
     admin_messages: Mapped[List["AdminMessage"]] = relationship(
@@ -265,6 +264,6 @@ class SupportAppeal(Base):
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
     status: Mapped[AppealStatus] = mapped_column(
-        String(30), server_default=AppealStatus.CREATED
+        String(30), server_default=AppealStatus.IN_WORK
     )
     user: Mapped["User"] = relationship(back_populates="appeals")

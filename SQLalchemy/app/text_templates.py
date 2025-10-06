@@ -166,20 +166,65 @@ async def book_for_review(book_info):
     return message_text
 
 
-async def appeal_text(appeal_id: int):
+async def appeal_hint_text(appeal_id: int):
     message_text = f"""
 📝 *Обращение #{appeal_id} создано*
 
 Опишите вашу проблему или вопрос, и мы ответим в ближайшее время.
 
-💡 *Советы:*
-• Опишите проблему максимально подробно
-• Укажите номер заказа, если вопрос связан с заказом
-• При необходимости прикрепите скриншоты
+💡 Укажите номер заказа, если вопрос связан с заказом
 
 🕐 *Среднее время ответа:* 1-2 часа
 """
     return message_text
+
+
+async def cooldown_text(cooldown_time):
+    text = f"""📝 Следующее обращение можно создать через 🕐 **{cooldown_time} минут**
+
+Мы ценим ваше внимание и стараемся ответить на все обращения максимально быстро. Небольшая пауза помогает нам сохранить качество поддержки.
+
+💡 Вы можете дополнить ваше прошлое обращение"""
+    return text
+
+
+status_dict = {
+    "in_work": "🔧 В работе",
+    "closed_by_user": "✅ Вы закрыли это обращение",
+    "closed_by_admin": "✅ Администратор закрыл это обращение ",
+}
+
+
+async def text_appeal_with_messages(appeal) -> str:
+    if not appeal:
+        return "❌ Обращение не найдено"
+    header = f"""📨 *Обращение #{appeal.appeal_id}*
+🔄 Статус: {status_dict[appeal.status]}
+📅 Создано: {appeal.created_date.strftime("%d.%m.%Y %H:%M")}
+
+"""
+    messages_text = ""
+    if not appeal.user_messages and not appeal.admin_messages:
+        messages_text = "📭 *Пока нет сообщений*"
+    else:
+        messages_text = "*Сообщения в обращение:*\n\n"
+        all_messages = []
+        for msg in appeal.user_messages:
+            all_messages.append(("👤 Вы", msg.created_date, msg.user_message))
+        for msg in appeal.admin_messages:
+            all_messages.append(("🛠 Поддержка", msg.created_date, msg.admin_message))
+        all_messages.sort(key=lambda x: x[1])
+        for sender, time, text in all_messages:
+            messages_text += f"{sender} ({time.strftime('%H:%M')}):\n{text}\n\n"
+    full_text = header + messages_text
+    if len(full_text) > 4000:
+        full_text = (
+            header
+            + "*Слишком много сообщений для отображения*\nИспользуйте кнопку '📜 Все сообщения'"
+        )
+        too_big = True
+    too_big = False
+    return full_text, too_big
 
 
 INFOTEXT = """📚 BookStore Demo Bot

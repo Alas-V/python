@@ -602,6 +602,68 @@ class SupportQueries:
             await session.commit()
             return appeal_id
 
+    @staticmethod
+    async def can_create_appeal(telegram_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(SupportAppeal.created_date)
+                .where(SupportAppeal.telegram_id == telegram_id)
+                .order_by(SupportAppeal.created_date.desc())
+                .limit(1)
+            )
+            last_appeal = result.scalar_one_or_none()
+            if not last_appeal:
+                return True
+            time_passed = datetime.utcnow() - last_appeal
+            return time_passed.total_seconds() >= 3600
+
+    @staticmethod
+    async def get_cooldown_minutes(telegram_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(SupportAppeal.created_date)
+                .where(SupportAppeal.telegram_id == telegram_id)
+                .order_by(SupportAppeal.created_date.desc())
+                .limit(1)
+            )
+            last_appeal = result.scalar_one_or_none()
+            if not last_appeal:
+                return 0
+            time_passed = datetime.utcnow() - last_appeal
+            remaining_seconds = 3600 - time_passed.total_seconds()
+            if remaining_seconds <= 0:
+                return 0
+            return int(remaining_seconds / 60)
+
+    @staticmethod
+    async def get_last_appeal_id(telegram_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(SupportAppeal.appeal_id)
+                .where(SupportAppeal.telegram_id == telegram_id)
+                .order_by(SupportAppeal.created_date.desc())
+                .limit(1)
+            )
+            last_appeal_id = result.scalar_one()
+            return last_appeal_id
+
+    @staticmethod
+    async def check_appeal_status(appeal_id: int) -> str:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(SupportAppeal.status).where(SupportAppeal.appeal_id == appeal_id)
+            )
+            status = result.scalar_one()
+            return status
+
+    @staticmethod
+    async def get_appeal_full(appeal_id: int):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(SupportAppeal).where(SupportAppeal.appeal_id == appeal_id)
+            )
+            return result.scalar_one_or_none()
+
 
 class OrderQueries:
     @staticmethod

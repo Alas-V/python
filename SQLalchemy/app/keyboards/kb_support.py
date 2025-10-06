@@ -57,3 +57,67 @@ class SupportKeyboards:
         builder.button(text="🔙 Главное меню", callback_data="main_menu")
         builder.adjust(1)
         return builder.as_markup()
+
+    @staticmethod
+    async def kb_in_appeal(
+        appeal_id: id, status: bool, too_big: bool
+    ) -> InlineKeyboardMarkup:
+        keyboard = [
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
+        ]
+        if status == "in_work":
+            keyboard.insert(
+                0,
+                InlineKeyboardButton(
+                    text="📝 Новое сообщение",
+                    callback_data=f"new_message_appeal_{appeal_id}",
+                ),
+            )
+            (
+                keyboard.insert(
+                    1,
+                    InlineKeyboardButton(
+                        text=("❌ Закрыть обращение"),
+                        callback_data=f"close_appeal_{appeal_id}",
+                    ),
+                ),
+            )
+        if too_big:
+            keyboard.insert(
+                0,
+                InlineKeyboardButton(
+                    text="📜 Все сообщения",
+                    callback_data=f"all_messages_appeal_{appeal_id}",
+                ),
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def kb_appeal_cooldown(last_appeal_id: int) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="📝 Открыть прошлое обращение",
+                    callback_data=f"open_appeal_{last_appeal_id}",
+                )
+            ],
+            [InlineKeyboardButton(text="🔙 Главное Меню", callback_data="main_menu")],
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def sure_close(appeal_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="❌ Не закрывать ",
+                        callback_data=f"open_appeal_{appeal_id}",
+                    ),
+                    InlineKeyboardButton(
+                        text="✅ Закрыть",
+                        callback_data=f"appeal_sure_close_{appeal_id}",
+                    ),
+                ]
+            ]
+        )
