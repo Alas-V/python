@@ -5,7 +5,7 @@ from config import ADMIN_ID
 from utils.states import SupportState
 from queries.orm import SupportQueries
 from keyboards.kb_support import SupportKeyboards
-from text_templates import appeal_hint_text, cooldown_text, text_appeal_with_messages
+from text_templates import appeal_hint_text, cooldown_text, text_appeal_split_messages
 
 support_router = Router()
 
@@ -48,10 +48,10 @@ async def new_appeal(callback: CallbackQuery, state: FSMContext):
     status = await SupportQueries.check_appeal_status(appeal_id)
     hint_text = await appeal_hint_text(appeal_id)
     appeal = await SupportQueries.get_appeal_full(appeal_id)
-    main_text, too_big = await text_appeal_with_messages(appeal)
+    main_text, too_big = await text_appeal_split_messages(appeal)
     main_message = await callback.message.edit_text(
         text=main_text,
-        reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status, too_big),
+        reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
     )
     hint_message = await callback.message.answer(
         text=hint_text,
@@ -69,14 +69,37 @@ async def new_appeal(callback: CallbackQuery, state: FSMContext):
 
 
 @support_router.callback_query(F.data.startswith("open_appeal_"))
-async def open_appeal(callback: CallbackQuery):
+async def open_appeal(callback: CallbackQuery, state: FSMContext):
     appeal_id = int(callback.data.split("_")[2])
     status = await SupportQueries.check_appeal_status(appeal_id)
     appeal = await SupportQueries.get_appeal_full(appeal_id)
-    main_text, too_big = await text_appeal_with_messages(appeal)
-    await callback.message.edit_text(
-        text=main_text,
-        reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status, too_big),
+    message_parts, main_text = await text_appeal_split_messages(appeal)
+    messages_to_delete = []
+    await callback.message.delete()
+    if not message_parts:
+        main_message = await callback.message.answer(
+            text=main_text,
+            reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
+            parse_mode="Markdown",
+        )
+        # messages_to_delete.append(main_message.message_id)
+    else:
+        for i, part in enumerate(message_parts):
+            part_text = part
+            if len(message_parts) > 1:
+                part_text = f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
+            msg = await callback.message.answer(part_text, parse_mode="Markdown")
+            messages_to_delete.append(msg.message_id)
+        main_message = await callback.message.answer(
+            text=main_text,
+            reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
+            parse_mode="Markdown",
+        )
+        messages_to_delete.append(main_message.message_id)
+    await state.update_data(
+        appeal_id=appeal_id,
+        messages_to_delete=messages_to_delete,
+        main_message_id=main_message.message_id,
     )
     await callback.answer()
 
@@ -96,10 +119,10 @@ async def appeal_sure_close(callback: CallbackQuery):
     await SupportQueries.close_appeal_by_user(appeal_id)
     status = await SupportQueries.check_appeal_status(appeal_id)
     appeal = await SupportQueries.get_appeal_full(appeal_id)
-    main_text, too_big = await text_appeal_with_messages(appeal)
+    main_text, too_big = await text_appeal_split_messages(appeal)
     await callback.message.edit_text(
         text=main_text,
-        reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status, too_big),
+        reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
     )
     await callback.answer("✅ Обращение закрыто")
 

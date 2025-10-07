@@ -195,36 +195,40 @@ status_dict = {
 }
 
 
-async def text_appeal_with_messages(appeal) -> str:
+async def text_appeal_split_messages(appeal) -> tuple[list[str], str]:
     if not appeal:
-        return "❌ Обращение не найдено"
-    header = f"""📨 *Обращение #{appeal.appeal_id}*
+        return [], "❌ Обращение не найдено"
+    main_text = f"""📨 *Обращение #{appeal.appeal_id}*
 🔄 Статус: {status_dict[appeal.status]}
 📅 Создано: {appeal.created_date.strftime("%d.%m.%Y %H:%M")}
-
+💬 Сообщений: {len(appeal.user_messages) + len(appeal.admin_messages)}
 """
-    messages_text = ""
     if not appeal.user_messages and not appeal.admin_messages:
-        messages_text = "📭 *Пока нет сообщений*"
-    else:
-        messages_text = "*Сообщения в обращение:*\n\n"
-        all_messages = []
-        for msg in appeal.user_messages:
-            all_messages.append(("👤 Вы", msg.created_date, msg.user_message))
-        for msg in appeal.admin_messages:
-            all_messages.append(("🛠 Поддержка", msg.created_date, msg.admin_message))
-        all_messages.sort(key=lambda x: x[1])
-        for sender, time, text in all_messages:
-            messages_text += f"{sender} ({time.strftime('%H:%M')}):\n{text}\n\n"
-    full_text = header + messages_text
-    if len(full_text) > 4000:
-        full_text = (
-            header
-            + "*Слишком много сообщений для отображения*\nИспользуйте кнопку '📜 Все сообщения'"
-        )
-        too_big = True
-    too_big = False
-    return full_text, too_big
+        return [], main_text + "\n\n📭 *Пока нет сообщений*"
+    all_messages = []
+    for msg in appeal.user_messages:
+        all_messages.append(("👤 Вы", msg.created_date, msg.user_message))
+    for msg in appeal.admin_messages:
+        all_messages.append(("🛠 Поддержка", msg.created_date, msg.admin_message))
+    all_messages.sort(key=lambda x: x[1])
+    single_message_text = main_text + "\n\n*История обращений:*\n\n"
+    for sender, time, text in all_messages:
+        message_line = f"{sender} ({time.strftime('%H:%M')}):\n{text}\n\n"
+        single_message_text += message_line
+    if len(single_message_text) <= 4000:
+        return [], single_message_text
+    message_parts = []
+    current_part = "*История обращений:*\n\n"
+    for sender, time, text in all_messages:
+        message_line = f"{sender} ({time.strftime('%H:%M')}):\n{text}\n\n"
+        if len(current_part) + len(message_line) > 4000:
+            message_parts.append(current_part)
+            current_part = "*Продолжение:*\n\n" + message_line
+        else:
+            current_part += message_line
+    if current_part and current_part != "*История обращений:*\n\n":
+        message_parts.append(current_part)
+    return message_parts, main_text
 
 
 INFOTEXT = """📚 BookStore Demo Bot

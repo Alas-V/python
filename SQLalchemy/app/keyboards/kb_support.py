@@ -59,9 +59,7 @@ class SupportKeyboards:
         return builder.as_markup()
 
     @staticmethod
-    async def kb_in_appeal(
-        appeal_id: id, status: bool, too_big: bool
-    ) -> InlineKeyboardMarkup:
+    async def kb_in_appeal(appeal_id: id, status: bool) -> InlineKeyboardMarkup:
         keyboard = [
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
         ]
@@ -80,14 +78,6 @@ class SupportKeyboards:
                         text=("❌ Закрыть обращение"),
                         callback_data=f"close_appeal_{appeal_id}",
                     ),
-                ),
-            )
-        if too_big:
-            keyboard.insert(
-                0,
-                InlineKeyboardButton(
-                    text="📜 Все сообщения",
-                    callback_data=f"all_messages_appeal_{appeal_id}",
                 ),
             )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)

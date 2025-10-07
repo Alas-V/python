@@ -225,7 +225,7 @@ class UserAddress(Base):
 class AdminMessage(Base):
     __tablename__ = "admin_messages"
     message_id: Mapped[intpk]
-    admin_message: Mapped[str] = mapped_column(String(400))
+    admin_message: Mapped[str] = mapped_column(String(500))
     telegram_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.telegram_id")
     )
@@ -239,7 +239,7 @@ class AdminMessage(Base):
 class UserMessage(Base):
     __tablename__ = "user_messages"
     message_id: Mapped[intpk]
-    message: Mapped[str] = mapped_column(String(600))
+    message: Mapped[str] = mapped_column(String(1000))
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
     appeal_id: Mapped[int] = mapped_column(
