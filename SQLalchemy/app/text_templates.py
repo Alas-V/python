@@ -168,13 +168,13 @@ async def book_for_review(book_info):
 
 async def appeal_hint_text(appeal_id: int):
     message_text = f"""
-📝 *Обращение #{appeal_id} создано*
+📝 Обращение #{appeal_id} создано
 
 Опишите вашу проблему или вопрос, и мы ответим в ближайшее время.
 
 💡 Укажите номер заказа, если вопрос связан с заказом
 
-🕐 *Среднее время ответа:* 1-2 часа
+🕐 Среднее время ответа: 1-2 часа
 """
     return message_text
 
@@ -188,6 +188,24 @@ async def cooldown_text(cooldown_time):
     return text
 
 
+async def message_cooldown_text(seconds):
+    if seconds < 60:
+        if seconds == 1:
+            return f"⏳ Подождите {seconds} секунду перед следующим сообщением"
+        elif 2 <= seconds <= 4:
+            return f"⏳ Подождите {seconds} секунды перед следующим сообщением"
+        else:
+            return f"⏳ Подождите {seconds} секунд перед следующим сообщением"
+    else:
+        minutes = (seconds + 59) // 60
+        if minutes == 1:
+            return f"⏳ Подождите {minutes} минуту перед следующим сообщением"
+        elif 2 <= minutes <= 4:
+            return f"⏳ Подождите {minutes} минуты перед следующим сообщением"
+        else:
+            return f"⏳ Подождите {minutes} минут перед следующим сообщением"
+
+
 status_dict = {
     "in_work": "🔧 В работе",
     "closed_by_user": "✅ Вы закрыли это обращение",
@@ -198,20 +216,19 @@ status_dict = {
 async def text_appeal_split_messages(appeal) -> tuple[list[str], str]:
     if not appeal:
         return [], "❌ Обращение не найдено"
-    main_text = f"""📨 *Обращение #{appeal.appeal_id}*
-🔄 Статус: {status_dict[appeal.status]}
-📅 Создано: {appeal.created_date.strftime("%d.%m.%Y %H:%M")}
-💬 Сообщений: {len(appeal.user_messages) + len(appeal.admin_messages)}
+    main_text = f"""📨 *Обращение #{appeal.appeal_id}* {status_dict[appeal.status]}
+
+📅 Создано: {appeal.created_date.strftime("%d.%m.%Y %H:%M")} 
 """
     if not appeal.user_messages and not appeal.admin_messages:
         return [], main_text + "\n\n📭 *Пока нет сообщений*"
     all_messages = []
     for msg in appeal.user_messages:
-        all_messages.append(("👤 Вы", msg.created_date, msg.user_message))
+        all_messages.append(("👤 Вы", msg.created_date, msg.message))
     for msg in appeal.admin_messages:
         all_messages.append(("🛠 Поддержка", msg.created_date, msg.admin_message))
     all_messages.sort(key=lambda x: x[1])
-    single_message_text = main_text + "\n\n*История обращений:*\n\n"
+    single_message_text = main_text + "\n\n*История обращения:*\n\n"
     for sender, time, text in all_messages:
         message_line = f"{sender} ({time.strftime('%H:%M')}):\n{text}\n\n"
         single_message_text += message_line

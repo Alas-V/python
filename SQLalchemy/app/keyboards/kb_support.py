@@ -22,7 +22,7 @@ class SupportKeyboards:
             appeal_id, created_date, status = appeal
             status_emoji = get_status_emoji(status)
             button_text = f"📅 {created_date.strftime('%d.%m')} | {status_emoji}"
-            builder.button(text=button_text, callback_data=f"view_appeal_{appeal_id}")
+            builder.button(text=button_text, callback_data=f"open_appeal_{appeal_id}")
         if total_count > 5:
             pagination_buttons = []
             total_pages = (total_count + 4) // 5
@@ -59,27 +59,29 @@ class SupportKeyboards:
         return builder.as_markup()
 
     @staticmethod
-    async def kb_in_appeal(appeal_id: id, status: bool) -> InlineKeyboardMarkup:
-        keyboard = [
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
-        ]
+    async def kb_in_appeal(appeal_id: id, status: str) -> InlineKeyboardMarkup:
+        keyboard = []
         if status == "in_work":
-            keyboard.insert(
-                0,
-                InlineKeyboardButton(
-                    text="📝 Новое сообщение",
-                    callback_data=f"new_message_appeal_{appeal_id}",
-                ),
-            )
-            (
-                keyboard.insert(
-                    1,
+            # keyboard.append(
+            #     [
+            #         InlineKeyboardButton(
+            #             text="📝 Новое сообщение",
+            #             callback_data=f"new_message_appeal_{appeal_id}",
+            #         )
+            #     ]
+            # )
+            keyboard.append(
+                [
                     InlineKeyboardButton(
-                        text=("❌ Закрыть обращение"),
+                        text="❌ Закрыть обращение",
                         callback_data=f"close_appeal_{appeal_id}",
-                    ),
-                ),
+                    )
+                ]
             )
+        keyboard.append(
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
+        )
+
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod

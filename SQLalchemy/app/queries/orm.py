@@ -6,13 +6,14 @@ from models import (
     Review,
     BookStatus,
     OrderStatus,
+    AppealStatus,
     BookGenre,
     Cart,
     CartItem,
     UserAddress,
     OrderData,
     AdminMessage,
-    SupportMessage,
+    UserMessage,
     SupportAppeal,
 )
 from faker import Faker
@@ -20,6 +21,7 @@ import random
 from datetime import datetime, timedelta
 from sqlalchemy import case, select, text, func, and_, update, or_
 from sqlalchemy.orm import selectinload
+import math
 
 fake = Faker("ru_RU")
 
@@ -633,7 +635,40 @@ class SupportQueries:
             remaining_seconds = 3600 - time_passed.total_seconds()
             if remaining_seconds <= 0:
                 return 0
-            return int(remaining_seconds / 60)
+            return math.ceil(remaining_seconds / 60)
+
+    @staticmethod
+    async def message_cooldown(telegram_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(UserMessage.created_date)
+                .where(UserMessage.telegram_id == telegram_id)
+                .order_by(UserMessage.created_date.desc())
+                .limit(1)
+            )
+            last_message = result.scalar_one_or_none()
+            if not last_message:
+                return True
+            time_passed = datetime.utcnow() - last_message
+            return time_passed.total_seconds() >= 120
+
+    @staticmethod
+    async def get_message_cooldown_seconds(telegram_id: int) -> str:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(UserMessage.created_date)
+                .where(UserMessage.telegram_id == telegram_id)
+                .order_by(UserMessage.created_date.desc())
+                .limit(1)
+            )
+            last_message = result.scalar_one_or_none()
+            if not last_message:
+                return 0
+            time_passed = datetime.utcnow() - last_message
+            remaining_seconds = 120 - time_passed.total_seconds()
+            if remaining_seconds <= 0:
+                return 0
+            return int(remaining_seconds)
 
     @staticmethod
     async def get_last_appeal_id(telegram_id: int) -> int:
@@ -660,9 +695,42 @@ class SupportQueries:
     async def get_appeal_full(appeal_id: int):
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(SupportAppeal).where(SupportAppeal.appeal_id == appeal_id)
+                select(SupportAppeal)
+                .where(SupportAppeal.appeal_id == appeal_id)
+                .options(
+                    selectinload(SupportAppeal.user_messages),
+                    selectinload(SupportAppeal.admin_messages),
+                )
             )
             return result.scalar_one_or_none()
+
+    @staticmethod
+    async def new_user_message(telegram_id, appeal_id, message):
+        async with AsyncSessionLocal() as session:
+            new_message = UserMessage(
+                telegram_id=telegram_id, message=message, appeal_id=appeal_id
+            )
+            session.add(new_message)
+            await session.commit()
+
+    @staticmethod
+    async def close_appeal(appeal_id: int, who_close: str) -> bool:
+        async with AsyncSessionLocal() as session:
+            if who_close == "user":
+                new_status = AppealStatus.CLOSED_BY_USER
+            elif who_close == "admin":
+                new_status = AppealStatus.CLOSED_BY_ADMIN
+            else:
+                return False
+            stmt = (
+                update(SupportAppeal)
+                .where(SupportAppeal.appeal_id == appeal_id)
+                .values(status=new_status)
+                .execution_options(synchronize_session=False)
+            )
+            await session.execute(stmt)
+            await session.commit()
+            return True
 
 
 class OrderQueries:

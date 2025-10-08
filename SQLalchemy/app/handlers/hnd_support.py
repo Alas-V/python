@@ -5,9 +5,25 @@ from config import ADMIN_ID
 from utils.states import SupportState
 from queries.orm import SupportQueries
 from keyboards.kb_support import SupportKeyboards
-from text_templates import appeal_hint_text, cooldown_text, text_appeal_split_messages
+from text_templates import (
+    appeal_hint_text,
+    cooldown_text,
+    text_appeal_split_messages,
+    message_cooldown_text,
+)
+from aiogram.exceptions import TelegramBadRequest
+import asyncio
 
 support_router = Router()
+
+
+async def delete_messages(bot, chat_id: int, message_ids: list):
+    for message_id in message_ids:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            if "message to delete not found" not in str(e):
+                print(f"Ошибка удаления сообщения {message_id}: {e}")
 
 
 @support_router.callback_query(F.data == "support")
@@ -33,8 +49,8 @@ async def contact_support(callback: CallbackQuery, state: FSMContext):
 @support_router.callback_query(F.data == "new_appeal")
 async def new_appeal(callback: CallbackQuery, state: FSMContext):
     telegram_id = int(callback.from_user.id)
-    cooldown = await SupportQueries.can_create_appeal(telegram_id)
-    if not cooldown:
+    no_cooldown = await SupportQueries.can_create_appeal(telegram_id)
+    if not no_cooldown:
         cooldown_time = await SupportQueries.get_cooldown_minutes(telegram_id)
         last_appeal_id = await SupportQueries.get_last_appeal_id(telegram_id)
         text = await cooldown_text(cooldown_time)
@@ -48,15 +64,17 @@ async def new_appeal(callback: CallbackQuery, state: FSMContext):
     status = await SupportQueries.check_appeal_status(appeal_id)
     hint_text = await appeal_hint_text(appeal_id)
     appeal = await SupportQueries.get_appeal_full(appeal_id)
-    main_text, too_big = await text_appeal_split_messages(appeal)
+    message_parts, main_text = await text_appeal_split_messages(appeal)
     main_message = await callback.message.edit_text(
         text=main_text,
+        parse_mode="Markdown",
         reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
     )
+    await callback.answer(text=hint_text, show_alert=True)
     hint_message = await callback.message.answer(
-        text=hint_text,
-        parse_mode="Markdown",
+        text="💌 Опишите ваш вопрос или проблему в сообщении ниже\nМы ответим в ближайшее время!"
     )
+    await state.set_state(SupportState.message_to_support)
     await state.update_data(
         appeal_id=appeal_id,
         main_message_id=main_message.message_id,
@@ -64,8 +82,6 @@ async def new_appeal(callback: CallbackQuery, state: FSMContext):
         user_messages=[],
         current_step="message_to_support",
     )
-    await state.set_state(SupportState.message_to_support)
-    await callback.answer()
 
 
 @support_router.callback_query(F.data.startswith("open_appeal_"))
@@ -82,7 +98,7 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
             reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
             parse_mode="Markdown",
         )
-        # messages_to_delete.append(main_message.message_id)
+        messages_to_delete.append(main_message.message_id)
     else:
         for i, part in enumerate(message_parts):
             part_text = part
@@ -96,12 +112,20 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
             parse_mode="Markdown",
         )
         messages_to_delete.append(main_message.message_id)
-    await state.update_data(
-        appeal_id=appeal_id,
-        messages_to_delete=messages_to_delete,
-        main_message_id=main_message.message_id,
-    )
-    await callback.answer()
+    if status == "in_work":
+        hint_message = await callback.message.answer(
+            text="💌 Опишите ваш вопрос или проблему в сообщении ниже\nМы ответим в ближайшее время!"
+        )
+        last_hint_id = hint_message.message_id
+        messages_to_delete.append(last_hint_id)
+        await state.update_data(
+            appeal_id=appeal_id,
+            last_hint_id=last_hint_id,
+            main_message_id=main_message.message_id,
+            user_messages=messages_to_delete,
+        )
+        await callback.answer()
+        await state.set_state(SupportState.message_to_support)
 
 
 @support_router.callback_query(F.data.startswith("close_appeal_"))
@@ -116,16 +140,76 @@ async def close_appeal(callback: CallbackQuery):
 @support_router.callback_query(F.data.startswith("appeal_sure_close_"))
 async def appeal_sure_close(callback: CallbackQuery):
     appeal_id = int(callback.data.split("_")[3])
-    await SupportQueries.close_appeal_by_user(appeal_id)
+    await SupportQueries.close_appeal(appeal_id, who_close="user")
     status = await SupportQueries.check_appeal_status(appeal_id)
     appeal = await SupportQueries.get_appeal_full(appeal_id)
-    main_text, too_big = await text_appeal_split_messages(appeal)
+    message_parts, main_text = await text_appeal_split_messages(appeal)
     await callback.message.edit_text(
         text=main_text,
+        parse_mode="Markdown",
         reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
     )
     await callback.answer("✅ Обращение закрыто")
 
 
-# @support_router.callback_query(F.data.startswith("all_messages_appeal_"))  #{appeal_id}
-# @support_router.callback_query(F.data.startswith("new_message_appeal_"))  #{appeal_id}
+# FMScontext hnd
+@support_router.message(SupportState.message_to_support)
+async def message_to_support(message: Message, state: FSMContext):
+    bot = message.bot
+    data = await state.get_data()
+    telegram_id = int(message.from_user.id)
+    appeal_id = data["appeal_id"]
+    main_message_id = data["main_message_id"]
+    last_hint_id = data.get("last_hint_id")
+    user_messages = data.get("user_messages", [])
+    no_message_cooldown = await SupportQueries.message_cooldown(telegram_id)
+    if not no_message_cooldown:
+        if last_hint_id:
+            try:
+                await bot.delete_message(
+                    chat_id=message.chat.id, message_id=last_hint_id
+                )
+            except Exception:
+                pass
+        try:
+            await bot.delete_message(
+                chat_id=message.chat.id, message_id=message.message_id
+            )
+        except Exception:
+            pass
+        cooldown_time = await SupportQueries.get_message_cooldown_seconds(telegram_id)
+        text = await message_cooldown_text(cooldown_time)
+        hint_message = await message.answer(text=text)
+        await state.update_data(last_hint_id=hint_message.message_id)
+        return
+    user_messages.append(message.message_id)
+    if last_hint_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_hint_id)
+        except Exception:
+            pass
+        user_messages.append(last_hint_id)
+    await SupportQueries.new_user_message(
+        telegram_id=telegram_id, appeal_id=appeal_id, message=message.text
+    )
+    await delete_messages(bot, message.chat.id, user_messages)
+    appeal = await SupportQueries.get_appeal_full(appeal_id)
+    status = await SupportQueries.check_appeal_status(appeal_id)
+    message_parts, main_text = await text_appeal_split_messages(appeal)
+    try:
+        await bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=main_message_id,
+            text=main_text,
+            reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
+            parse_mode="Markdown",
+        )
+    except TelegramBadRequest:
+        pass
+    confirmation = await message.answer("✅ Сообщение отправлено!")
+    await asyncio.sleep(1)
+    await confirmation.delete()
+    await state.update_data(
+        user_messages=[],
+        last_hint_id=None,
+    )

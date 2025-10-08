@@ -157,9 +157,10 @@ class User(Base):
         lazy="joined",
         uselist=False,
     )
-    order_data: Mapped["OrderData"] = relationship(back_populates="user")
-    address: Mapped["UserAddress"] = relationship(back_populates="user")
+    order_data: Mapped[List["OrderData"]] = relationship(back_populates="user")
+    address: Mapped[List["UserAddress"]] = relationship(back_populates="user")
     appeals: Mapped[List["SupportAppeal"]] = relationship(back_populates="user")
+    messages: Mapped[List["UserMessage"]] = relationship(back_populates="user")
 
 
 class Review(Base):
@@ -239,14 +240,16 @@ class AdminMessage(Base):
 class UserMessage(Base):
     __tablename__ = "user_messages"
     message_id: Mapped[intpk]
-    message: Mapped[str] = mapped_column(String(1000))
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id")
+    )
+    message: Mapped[str] = mapped_column(String(1500))
     created_date: Mapped[created_at]
-    updated_at: Mapped[updated_at]
     appeal_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("support_appeals.appeal_id")
     )
-    created_date: Mapped[created_at]
     appeal: Mapped["SupportAppeal"] = relationship(back_populates="user_messages")
+    user: Mapped["User"] = relationship(back_populates="messages")
 
 
 class SupportAppeal(Base):
