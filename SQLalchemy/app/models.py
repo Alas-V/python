@@ -163,6 +163,15 @@ class User(Base):
     messages: Mapped[List["UserMessage"]] = relationship(back_populates="user")
 
 
+class Admin(Base):
+    __tablename__ = "admins"
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(30))
+    appeals_count: Mapped[int]
+
+
 class Review(Base):
     __tablename__ = "reviews"
     review_id: Mapped[intpk]

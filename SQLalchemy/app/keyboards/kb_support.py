@@ -40,14 +40,14 @@ class SupportKeyboards:
                 )
             if pagination_buttons:
                 builder.row(*pagination_buttons)
-            builder.row(
-                InlineKeyboardButton(
-                    text="📝 Создать новое обращение", callback_data="new_appeal"
-                )
+        builder.row(
+            InlineKeyboardButton(
+                text="📝 Создать новое обращение", callback_data="new_appeal"
             )
-            builder.row(
-                InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")
-            )
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")
+        )
         return builder.as_markup()
 
     @staticmethod

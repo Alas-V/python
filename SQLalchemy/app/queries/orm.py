@@ -560,7 +560,7 @@ class SupportQueries:
             ticket = await session.execute(
                 select(SupportAppeal).where(SupportAppeal.telegram_id == telegram_id)
             )
-            result = ticket.scalar_one_or_none()
+            result = ticket.first() is not None
             return result
 
     @staticmethod
