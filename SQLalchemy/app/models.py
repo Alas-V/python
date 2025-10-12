@@ -9,11 +9,12 @@ from sqlalchemy import (
     Boolean,
     Float,
     JSON,
+    Index,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from database import Base
 from typing import List, Annotated, Optional
-from enum import Enum
+from enum import Enum, IntFlag
 from datetime import datetime
 
 
@@ -69,6 +70,23 @@ class AppealStatus(str, Enum):
     IN_WORK = "in_work"
     CLOSED_BY_USER = "closed_by_user"
     CLOSED_BY_ADMIN = "closed_by_admin"
+
+
+class AdminPermission(IntFlag):
+    NONE = 0
+    VIEW_STATS = 1  # 00000001 - Просмотр статистики
+    MANAGE_SUPPORT = 2  # 00000010 - Управление поддержкой
+    MANAGE_BOOKS = 4  # 00000100 - Управление книгами
+    MANAGE_AUTHORS = 8  # 00001000 - Управление авторами
+    MANAGE_SALES = 16  # 00010000 - Управление скидками
+    MANAGE_USERS = 32  # 00100000 - Управление пользователями
+    MANAGE_ADMINS = 64  # 01000000 - Управление админами
+    ALL = 127  # 01111111 - Все права
+
+    MODERATOR_PERMS = VIEW_STATS | MANAGE_SUPPORT
+    CONTENT_MANAGER_PERMS = MODERATOR_PERMS | MANAGE_BOOKS | MANAGE_AUTHORS
+    ADMIN_PERMS = CONTENT_MANAGER_PERMS | MANAGE_SALES | MANAGE_USERS
+    SUPER_ADMIN_PERMS = ADMIN_PERMS | MANAGE_ADMINS
 
 
 class Author(Base):
@@ -165,11 +183,17 @@ class User(Base):
 
 class Admin(Base):
     __tablename__ = "admins"
-    telegram_id: Mapped[int] = mapped_column(
-        BigInteger, unique=True, nullable=False, index=True
+    admin_id: Mapped[intpk]
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True)
+    name: Mapped[Optional[str]]
+    permissions: Mapped[int] = mapped_column(
+        Integer, default=AdminPermission.MODERATOR_PERMS
     )
-    name: Mapped[str] = mapped_column(String(30))
-    appeals_count: Mapped[int]
+    role_name: Mapped[str] = mapped_column(String(20), default="moderator")
+    total_message_count: Mapped[int] = mapped_column(Integer, server_default=0)
+    created_at: Mapped[created_at]
+    updated_at: Mapped[updated_at]
+    messages: Mapped[List["AdminMessage"]] = relationship(back_populates="admin")
 
 
 class Review(Base):
@@ -234,16 +258,16 @@ class UserAddress(Base):
 
 class AdminMessage(Base):
     __tablename__ = "admin_messages"
+    __table_args__ = (Index("ix_admin_messages_appeal_id", "appeal_id"),)
     message_id: Mapped[intpk]
     admin_message: Mapped[str] = mapped_column(String(500))
-    telegram_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.telegram_id")
-    )
+    admin_id: Mapped[int] = mapped_column(Integer, ForeignKey("admins.admin_id"))
     appeal_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("support_appeals.appeal_id")
     )
     created_date: Mapped[created_at]
     appeal: Mapped["SupportAppeal"] = relationship(back_populates="admin_messages")
+    admin: Mapped["Admin"] = relationship(back_populates="messages")
 
 
 class UserMessage(Base):

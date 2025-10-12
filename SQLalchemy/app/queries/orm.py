@@ -15,6 +15,8 @@ from models import (
     AdminMessage,
     UserMessage,
     SupportAppeal,
+    Admin,
+    AdminPermission,
 )
 from faker import Faker
 import random
@@ -1088,6 +1090,21 @@ class OrderQueries:
             }
 
 
+class AdminQueries:
+    @staticmethod
+    async def get_admin_by_telegram_id(telegram_id: int):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Admin).where(Admin.telegram_id == telegram_id)
+            )
+            return result.scalar_one_or_none()
+
+    @staticmethod
+    async def is_user_admin(telegram_id: int) -> bool:
+        admin = await AdminQueries.get_admin_by_telegram_id(telegram_id)
+        return admin is not None
+
+
 class DBData:
     @staticmethod
     async def add_other_data():
@@ -1115,6 +1132,7 @@ class DBData:
                 user_first_name="Artem",
                 telegram_id=717149416,
             )
+
             cart = Cart(telegram_id=717149416)
             review = Review(
                 book_id=2,
@@ -1134,15 +1152,13 @@ class DBData:
                 finished=True,
                 published=True,
             )
+            admin = Admin(
+                telegram_id=717149416,
+                name="Артём",
+                permission=AdminPermission.SUPER_ADMIN_PERMS,
+            )
             session.add_all(
-                [
-                    book,
-                    cart,
-                    second_book,
-                    user,
-                    review,
-                    second_review,
-                ]
+                [book, cart, second_book, user, review, second_review, admin]
             )
             await session.commit()
 
