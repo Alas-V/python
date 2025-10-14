@@ -11,6 +11,18 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from config import TOKEN
 from handlers import setup_router
+# from queries.orm import AdminQueries
+
+
+# async def check_admin_access():
+#     your_telegram_id = 717149416
+#     admin = await AdminQueries.get_admin_by_telegram_id(your_telegram_id)
+#     print(f"Admin data: {admin}")
+#     if admin:
+#         print(f"Permissions: {admin.permissions}")
+#         print(f"Role: {admin.role_name}")
+#     else:
+#         print("User not found in admin table")
 
 
 bot = Bot(token=TOKEN)
@@ -30,6 +42,7 @@ async def main():
     await DBData.fake_data()
     await SaleQueries.add_on_sale([1, 15, 24, 13, 6, 4, 5, 12], 0.2)
     await SaleQueries.add_on_sale([11, 3, 2, 20, 16, 17], 0.1)
+    # await check_admin_access()
     await dp.start_polling(bot)
     # await select_books()
     # await update_user_name(2, "SUMO")

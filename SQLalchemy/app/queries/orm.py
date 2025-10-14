@@ -1097,12 +1097,27 @@ class AdminQueries:
             result = await session.execute(
                 select(Admin).where(Admin.telegram_id == telegram_id)
             )
-            return result.scalar_one_or_none()
+            admin = result.scalar_one_or_none()
+            print(f"Found admin: {admin}")
+            return admin
 
     @staticmethod
     async def is_user_admin(telegram_id: int) -> bool:
-        admin = await AdminQueries.get_admin_by_telegram_id(telegram_id)
-        return admin is not None
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Admin).where(Admin.telegram_id == telegram_id)
+            )
+            admin = result.scalar_one_or_none()
+            return admin is not None
+
+    @staticmethod
+    async def get_admin_name(telegram_id: int) -> str:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Admin).where(Admin.telegram_id == telegram_id)
+            )
+            admin = result.scalar_one_or_none()
+            return admin.name if admin else "Администратор"
 
 
 class DBData:
@@ -1132,7 +1147,6 @@ class DBData:
                 user_first_name="Artem",
                 telegram_id=717149416,
             )
-
             cart = Cart(telegram_id=717149416)
             review = Review(
                 book_id=2,
@@ -1152,14 +1166,7 @@ class DBData:
                 finished=True,
                 published=True,
             )
-            admin = Admin(
-                telegram_id=717149416,
-                name="Артём",
-                permission=AdminPermission.SUPER_ADMIN_PERMS,
-            )
-            session.add_all(
-                [book, cart, second_book, user, review, second_review, admin]
-            )
+            session.add_all([book, cart, second_book, user, review, second_review])
             await session.commit()
 
     @staticmethod
@@ -1173,10 +1180,17 @@ class DBData:
             cart = Cart(telegram_id=user.telegram_id)
             user.cart = cart
             session.add_all([user, cart])
+            admin = Admin(
+                telegram_id=717149416,
+                name="Артём",
+                permissions=AdminPermission.SUPER_ADMIN_PERMS,
+                role_name="super_admin",
+            )
             authors = [
                 Author(author_name=fake.name(), author_country=fake.country())
                 for _ in range(25)
             ]
+            session.add(admin)
             session.add_all(authors)
             await session.flush()
             books = [

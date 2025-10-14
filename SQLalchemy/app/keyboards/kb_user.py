@@ -4,30 +4,35 @@ from queries.orm import OrderQueries
 
 class UserKeyboards:
     @staticmethod
-    async def main_menu() -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
+    async def main_menu(is_admin: bool = False) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="🔥 Товары со скидкой 🔥", callback_data="sale_menu"
+                )
+            ],
+            [
+                InlineKeyboardButton(text="🛒Корзина", callback_data="cart"),
+                InlineKeyboardButton(text="📚Каталог", callback_data="catalog"),
+            ],
+            [
+                InlineKeyboardButton(text="📦Мои заказы", callback_data="my_orders"),
+                InlineKeyboardButton(text="📝Мои отзывы", callback_data="my_reviews"),
+            ],
+            [InlineKeyboardButton(text="📨 Поддержка", callback_data="support")],
+            [InlineKeyboardButton(text="ℹ️Информация", callback_data="information")],
+        ]
+        if is_admin:
+            keyboard.insert(
+                0,
                 [
                     InlineKeyboardButton(
-                        text="🔥 Товары со скидкой 🔥", callback_data="sale_menu"
+                        text="👑 Админ-панель", callback_data="admin_menu"
                     )
                 ],
-                [
-                    InlineKeyboardButton(text="🛒Корзина", callback_data="cart"),
-                    InlineKeyboardButton(text="📚Каталог", callback_data="catalog"),
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="📦Мои заказы", callback_data="my_orders"
-                    ),
-                    InlineKeyboardButton(
-                        text="📝Мои отзывы", callback_data="my_reviews"
-                    ),
-                ],
-                [InlineKeyboardButton(text="📨 Поддержка", callback_data="support")],
-                [InlineKeyboardButton(text="ℹ️Информация", callback_data="information")],
-            ]
-        )
+            )
+
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
     async def show_genre() -> InlineKeyboardMarkup:

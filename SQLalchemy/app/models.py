@@ -75,18 +75,18 @@ class AppealStatus(str, Enum):
 class AdminPermission(IntFlag):
     NONE = 0
     VIEW_STATS = 1  # 00000001 - Просмотр статистики
-    MANAGE_SUPPORT = 2  # 00000010 - Управление поддержкой
+    MANAGE_ORDERS = 2  # 00000010 - Управление заказами
     MANAGE_BOOKS = 4  # 00000100 - Управление книгами
-    MANAGE_AUTHORS = 8  # 00001000 - Управление авторами
-    MANAGE_SALES = 16  # 00010000 - Управление скидками
-    MANAGE_USERS = 32  # 00100000 - Управление пользователями
-    MANAGE_ADMINS = 64  # 01000000 - Управление админами
-    ALL = 127  # 01111111 - Все права
+    MANAGE_SUPPORT = 8  # 00001000 - Управление поддержкой
+    MANAGE_ADMINS = 16  # 00010000 - Управление админами
 
+    # Комбинации для ролей
     MODERATOR_PERMS = VIEW_STATS | MANAGE_SUPPORT
-    CONTENT_MANAGER_PERMS = MODERATOR_PERMS | MANAGE_BOOKS | MANAGE_AUTHORS
-    ADMIN_PERMS = CONTENT_MANAGER_PERMS | MANAGE_SALES | MANAGE_USERS
-    SUPER_ADMIN_PERMS = ADMIN_PERMS | MANAGE_ADMINS
+    MANAGER_PERMS = MODERATOR_PERMS | MANAGE_ORDERS | MANAGE_BOOKS
+    ADMIN_PERMS = MANAGER_PERMS | MANAGE_ADMINS
+    SUPER_ADMIN_PERMS = (
+        VIEW_STATS | MANAGE_ORDERS | MANAGE_BOOKS | MANAGE_SUPPORT | MANAGE_ADMINS
+    )
 
 
 class Author(Base):
@@ -190,7 +190,7 @@ class Admin(Base):
         Integer, default=AdminPermission.MODERATOR_PERMS
     )
     role_name: Mapped[str] = mapped_column(String(20), default="moderator")
-    total_message_count: Mapped[int] = mapped_column(Integer, server_default=0)
+    total_message_count: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
     messages: Mapped[List["AdminMessage"]] = relationship(back_populates="admin")

@@ -1,5 +1,11 @@
 from aiogram import F, Router
-from queries.orm import OrderQueries, BookQueries, UserQueries, SaleQueries
+from queries.orm import (
+    OrderQueries,
+    BookQueries,
+    UserQueries,
+    SaleQueries,
+    AdminQueries,
+)
 from aiogram.types import CallbackQuery, Message
 from aiogram.filters import CommandStart
 from keyboards.kb_user import UserKeyboards
@@ -51,6 +57,7 @@ async def cmd_start(message: Message, state: FSMContext):
         "username": message.from_user.username,
         "user_first_name": message.from_user.first_name,
     }
+    is_admin = await AdminQueries.is_user_admin(int(message.from_user.id))
     user = await UserQueries.get_user_if_exist(user_data)
     text = f"""
 📖 Привет {user.user_first_name}, Я — Book Bot *DEMO*, твой персональный помощник в мире книг.  
@@ -63,7 +70,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
 Давай начнем! Выбери действие в меню.
     """
-    await message.answer(text, reply_markup=await UserKeyboards.main_menu())
+    await message.answer(text, reply_markup=await UserKeyboards.main_menu(is_admin))
 
 
 @user_router.callback_query(F.data == "main_menu")
@@ -76,6 +83,7 @@ async def menu(callback: CallbackQuery, state: FSMContext):
             bot = callback.message.bot
             await delete_messages(bot, callback.message.chat.id, [last_hint_id])
         await state.clear()
+    is_admin = await AdminQueries.is_user_admin(int(callback.from_user.id))
     text = """
 📚 Главное меню Book Bot *DEMO*. Твой персональный помощник в мире книг.
 
@@ -88,7 +96,9 @@ async def menu(callback: CallbackQuery, state: FSMContext):
     📨 Поддержка        ℹ️ Информация
 """
     await callback.answer("Возвращение в Меню")
-    await callback.message.edit_text(text, reply_markup=await UserKeyboards.main_menu())
+    await callback.message.edit_text(
+        text, reply_markup=await UserKeyboards.main_menu(is_admin)
+    )
 
 
 @user_router.callback_query(F.data == "information")
