@@ -59,6 +59,13 @@ class OrderStatus(str, Enum):
     CANCELLED = "Отменен❌"
 
 
+class PriorityStatus(str, Enum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
 class BookStatus(str, Enum):
     PENDING = "pending"
     IN_STOCK = "in stock"
@@ -67,6 +74,7 @@ class BookStatus(str, Enum):
 
 
 class AppealStatus(str, Enum):
+    NEW = "new"
     IN_WORK = "in_work"
     CLOSED_BY_USER = "closed_by_user"
     CLOSED_BY_ADMIN = "closed_by_admin"
@@ -74,14 +82,14 @@ class AppealStatus(str, Enum):
 
 class AdminPermission(IntFlag):
     NONE = 0
-    VIEW_STATS = 1  # 00000001 - Просмотр статистики
+    MANAGE_SUPPORT = 1  # 00000001 - Управление поддержкой
     MANAGE_ORDERS = 2  # 00000010 - Управление заказами
     MANAGE_BOOKS = 4  # 00000100 - Управление книгами
-    MANAGE_SUPPORT = 8  # 00001000 - Управление поддержкой
+    VIEW_STATS = 8  # 00001000 - Просмотр статистики
     MANAGE_ADMINS = 16  # 00010000 - Управление админами
 
     # Комбинации для ролей
-    MODERATOR_PERMS = VIEW_STATS | MANAGE_SUPPORT
+    MODERATOR_PERMS = MANAGE_SUPPORT
     MANAGER_PERMS = MODERATOR_PERMS | MANAGE_ORDERS | MANAGE_BOOKS
     ADMIN_PERMS = MANAGER_PERMS | MANAGE_ADMINS
     SUPER_ADMIN_PERMS = (
@@ -300,6 +308,12 @@ class SupportAppeal(Base):
     created_date: Mapped[created_at]
     updated_at: Mapped[updated_at]
     status: Mapped[AppealStatus] = mapped_column(
-        String(30), server_default=AppealStatus.IN_WORK
+        String(30), server_default=AppealStatus.NEW
     )
     user: Mapped["User"] = relationship(back_populates="appeals")
+    assigned_admin_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("admins.admin_id"), nullable=True
+    )
+    priority: Mapped[str] = mapped_column(
+        String(10), server_default=PriorityStatus.NORMAL
+    )

@@ -23,7 +23,6 @@ class AdminMiddleware(BaseMiddleware):
         data["admin_name"] = "Администратор"
         if user_id and not event.from_user.is_bot:
             print(f"Middleware: Checking admin for REAL user_id: {user_id}")
-
             admin_data = await AdminQueries.get_admin_by_telegram_id(user_id)
             data["is_admin"] = admin_data is not None
             if admin_data:

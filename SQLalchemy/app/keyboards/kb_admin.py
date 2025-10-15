@@ -62,5 +62,34 @@ class KbAdmin:
         keyboard.append(
             [InlineKeyboardButton(text="🔙 Выход", callback_data="main_menu")]
         )
-
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def support_main_keyboard() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🎯 Взять новое обращение",
+                        callback_data="support_take_new",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔄 Мои активные обращения",
+                        callback_data="support_my_active",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="📁 Мои закрытые обращения",
+                        callback_data="support_my_closed",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="📊 Обновить статистику", callback_data="support_my_stats"
+                    )
+                ],
+            ]
+        )

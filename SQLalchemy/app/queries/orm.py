@@ -1119,6 +1119,95 @@ class AdminQueries:
             admin = result.scalar_one_or_none()
             return admin.name if admin else "Администратор"
 
+    @staticmethod
+    async def get_admin_support_statistics(telegram_id: int) -> dict:
+        """
+        Статистика поддержки ТОЛЬКО для конкретного админа
+        """
+        async with AsyncSessionLocal() as session:
+            today = datetime.now().date()
+            today_start = datetime.combine(today, datetime.min.time())
+
+            # Получаем admin_id из telegram_id
+            admin_query = select(Admin.admin_id, Admin.name).where(
+                Admin.telegram_id == telegram_id
+            )
+            admin_result = await session.execute(admin_query)
+            admin_row = admin_result.first()
+
+            if not admin_row:
+                return {"error": "Администратор не найден"}
+
+            admin_id, admin_name = admin_row
+
+            # Чистый SQL запрос БЕЗ отсутствующих полей
+            sql_query = text("""
+                SELECT 
+                    -- ОБЩАЯ статистика (все админы могут видеть общие цифры)
+                    COUNT(sa.appeal_id) as total_appeals,
+                    COUNT(CASE WHEN sa.created_date >= :today_start THEN 1 END) as appeals_today,
+                    
+                    -- Общая статистика по статусам за сегодня
+                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'new' THEN 1 END) as new_today,
+                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'in_work' THEN 1 END) as in_work_today,
+                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'closed_by_admin' THEN 1 END) as closed_by_admin_today,
+                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'closed_by_user' THEN 1 END) as closed_by_user_today,
+                    
+                    -- Общая статистика по приоритетам (только активные)
+                    COUNT(CASE WHEN sa.priority = 'critical' AND sa.status IN ('new', 'in_work') THEN 1 END) as critical_count,
+                    COUNT(CASE WHEN sa.priority = 'high' AND sa.status IN ('new', 'in_work') THEN 1 END) as high_count,
+                    COUNT(CASE WHEN sa.priority = 'normal' AND sa.status IN ('new', 'in_work') THEN 1 END) as normal_count,
+                    
+                    -- ПЕРСОНАЛЬНАЯ статистика админа (только его обращения)
+                    COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'in_work' THEN 1 END) as admin_active,
+                    COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'closed_by_admin' THEN 1 END) as admin_closed,
+                    COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'new' THEN 1 END) as admin_new,
+                    
+                    -- Обращения, ожидающие ответа этого админа более 24 часов (используем existing поле updated_at)
+                    COUNT(CASE WHEN 
+                        sa.assigned_admin_id = :admin_id 
+                        AND sa.status = 'in_work' 
+                        AND sa.updated_at < NOW() - INTERVAL '24 hours'
+                        THEN 1 END) as admin_overdue
+                    
+                FROM support_appeals sa
+            """)
+
+            # Параметры для запроса
+            params = {"today_start": today_start, "admin_id": admin_id}
+
+            result = await session.execute(sql_query, params)
+            row = result.fetchone()
+
+            # Общее количество закрытых за сегодня (всех админов)
+            today_closed_total = (row.closed_by_admin_today or 0) + (
+                row.closed_by_user_today or 0
+            )
+
+            return {
+                # Общая статистика (все админы)
+                "total_appeals": row.total_appeals or 0,
+                "appeals_today": row.appeals_today or 0,
+                "new_appeals_today": row.new_today or 0,
+                "in_work_today": row.in_work_today or 0,
+                "closed_today_total": today_closed_total,
+                "closed_by_admin_today": row.closed_by_admin_today or 0,
+                "closed_by_user_today": row.closed_by_user_today or 0,
+                # Статистика по приоритетам (все админы)
+                "critical_appeals": row.critical_count or 0,
+                "high_priority_appeals": row.high_count or 0,
+                "normal_priority_appeals": row.normal_count or 0,
+                # ПЕРСОНАЛЬНАЯ статистика этого админа
+                "admin_name": admin_name,
+                "admin_active_appeals": row.admin_active or 0,
+                "admin_closed_appeals": row.admin_closed or 0,
+                "admin_new_appeals": row.admin_new or 0,
+                "admin_overdue_appeals": row.admin_overdue or 0,
+                # Временные метки
+                "stats_date": today.strftime("%d.%m.%Y"),
+                "generated_at": datetime.now().strftime("%H:%M"),
+            }
+
 
 class DBData:
     @staticmethod
@@ -1172,6 +1261,7 @@ class DBData:
     @staticmethod
     async def fake_data():
         async with AsyncSessionLocal() as session:
+            # Создаем основного пользователя и админа
             user = User(
                 username="Sentrybuster",
                 user_first_name="Artem",
@@ -1180,12 +1270,15 @@ class DBData:
             cart = Cart(telegram_id=user.telegram_id)
             user.cart = cart
             session.add_all([user, cart])
+
             admin = Admin(
                 telegram_id=717149416,
                 name="Артём",
                 permissions=AdminPermission.SUPER_ADMIN_PERMS,
                 role_name="super_admin",
             )
+
+            # Создаем авторов
             authors = [
                 Author(author_name=fake.name(), author_country=fake.country())
                 for _ in range(25)
@@ -1193,6 +1286,8 @@ class DBData:
             session.add(admin)
             session.add_all(authors)
             await session.flush()
+
+            # Создаем книги
             books = [
                 Book(
                     book_title=fake.sentence(nb_words=3)[:-1],
@@ -1207,8 +1302,10 @@ class DBData:
             ]
             session.add_all(books)
             await session.flush()
+
+            # Создаем дополнительных пользователей
+            users = []
             for _ in range(25):
-                users = []
                 user = User(
                     username=fake.user_name()[:30],
                     user_first_name=fake.name()[:30],
@@ -1217,10 +1314,14 @@ class DBData:
                 cart = Cart(telegram_id=user.telegram_id)
                 user.cart = cart
                 users.append(user)
-                session.add_all(users)
+                session.add(user)
+
             await session.flush()
+
+            # Создаем отзывы
             book_ids = [book.book_id for book in books]
             user_ids = [user.telegram_id for user in users]
+
             reviews = [
                 Review(
                     book_id=random.choice(book_ids),
@@ -1235,8 +1336,8 @@ class DBData:
                 for _ in range(70)
             ]
             session.add_all(reviews)
-            await session.commit()
-            reviews = [
+
+            reviews2 = [
                 Review(
                     book_id=random.choice(book_ids),
                     telegram_id=random.choice(user_ids),
@@ -1249,6 +1350,9 @@ class DBData:
                 )
                 for _ in range(250)
             ]
+            session.add_all(reviews2)
+
+            # Создаем элемент корзины
             cart_item = CartItem(
                 cart_id=1,
                 cart_items_id=1,
@@ -1256,7 +1360,186 @@ class DBData:
                 quantity=1,
                 price=1000,
             )
-            session.add_all(reviews)
             session.add(cart_item)
+
+            # ТЕПЕРЬ СОЗДАЕМ ТЕСТОВЫЕ ОБРАЩЕНИЯ ПОДДЕРЖКИ
+            print("🔄 Создание тестовых обращений поддержки...")
+
+            # Получаем всех пользователей и админов для создания обращений
+            all_users_result = await session.execute(select(User))
+            all_users = all_users_result.scalars().all()
+
+            all_admins_result = await session.execute(select(Admin))
+            all_admins = all_admins_result.scalars().all()
+
+            if not all_users or not all_admins:
+                print("❌ Нет пользователей или админов для создания обращений")
+                return
+
+            support_appeals = []
+            user_messages = []
+            admin_messages = []
+
+            # Текущее время и даты для разных периодов
+            now = datetime.now()
+            today = now.date()
+            yesterday = today - timedelta(days=1)
+            last_week = today - timedelta(days=7)
+
+            # Все возможные статусы
+            statuses = [
+                AppealStatus.NEW,
+                AppealStatus.IN_WORK,
+                AppealStatus.CLOSED_BY_USER,
+                AppealStatus.CLOSED_BY_ADMIN,
+            ]
+            priorities = ["low", "normal", "high", "critical"]
+
+            # Создаем 25 тестовых обращений
+            for i in range(25):
+                user = random.choice(all_users)
+                admin = random.choice(all_admins) if random.random() > 0.3 else None
+
+                # Разное время создания
+                if i < 8:  # Сегодня
+                    created_date = now - timedelta(hours=random.randint(1, 23))
+                    status = random.choice([AppealStatus.NEW, AppealStatus.IN_WORK])
+                elif i < 16:  # Вчера
+                    created_date = datetime.combine(yesterday, now.time()) - timedelta(
+                        hours=random.randint(1, 23)
+                    )
+                    status = random.choice(statuses)
+                else:  # На прошлой неделе
+                    created_date = datetime.combine(last_week, now.time()) + timedelta(
+                        days=random.randint(0, 6)
+                    )
+                    status = random.choice(
+                        [AppealStatus.CLOSED_BY_USER, AppealStatus.CLOSED_BY_ADMIN]
+                    )
+
+                priority = random.choice(priorities)
+
+                # Для обращений в работе и закрытых админом должен быть назначен админ
+                if (
+                    status in [AppealStatus.IN_WORK, AppealStatus.CLOSED_BY_ADMIN]
+                    and not admin
+                ):
+                    admin = random.choice(all_admins)
+
+                # Создаем обращение
+                appeal = SupportAppeal(
+                    telegram_id=user.telegram_id,
+                    created_date=created_date,
+                    updated_at=created_date,
+                    status=status,
+                    priority=priority,
+                    assigned_admin_id=admin.admin_id if admin else None,
+                )
+                support_appeals.append(appeal)
+                session.add(appeal)
+
+            await session.flush()  # Получаем ID для созданных обращений
+
+            # Создаем сообщения для обращений
+            for appeal in support_appeals:
+                # Сообщения от пользователя (1-3 сообщения)
+                user_msg_count = random.randint(1, 3)
+                for j in range(user_msg_count):
+                    user_message = UserMessage(
+                        telegram_id=appeal.telegram_id,
+                        message=f"Тестовое сообщение от пользователя #{j + 1}: {fake.paragraph(nb_sentences=2)}",
+                        created_date=appeal.created_date + timedelta(minutes=j * 10),
+                        appeal_id=appeal.appeal_id,
+                    )
+                    user_messages.append(user_message)
+                    session.add(user_message)
+
+                # Сообщения от админа (если обращение в работе или закрыто)
+                if appeal.status != AppealStatus.NEW and appeal.assigned_admin_id:
+                    admin_msg_count = random.randint(1, 2)
+                    for k in range(admin_msg_count):
+                        admin_message = AdminMessage(
+                            admin_id=appeal.assigned_admin_id,
+                            admin_message=f"Тестовый ответ админа #{k + 1}: {fake.paragraph(nb_sentences=2)}",
+                            appeal_id=appeal.appeal_id,
+                            created_date=appeal.created_date + timedelta(hours=1 + k),
+                        )
+                        admin_messages.append(admin_message)
+                        session.add(admin_message)
+
+                # Обновляем updated_at для некоторых обращений
+                if random.random() > 0.7:
+                    appeal.updated_at = appeal.created_date + timedelta(
+                        hours=random.randint(1, 24)
+                    )
+
+            # Собираем статистику ДО коммита, пока объекты еще в сессии
+            new_count = len(
+                [a for a in support_appeals if a.status == AppealStatus.NEW]
+            )
+            in_work_count = len(
+                [a for a in support_appeals if a.status == AppealStatus.IN_WORK]
+            )
+            closed_by_user_count = len(
+                [a for a in support_appeals if a.status == AppealStatus.CLOSED_BY_USER]
+            )
+            closed_by_admin_count = len(
+                [a for a in support_appeals if a.status == AppealStatus.CLOSED_BY_ADMIN]
+            )
+
+            # Получаем временные метки ДО коммита
+            created_dates = [a.created_date for a in support_appeals]
+            oldest_appeal = min(created_dates) if created_dates else now
+            newest_appeal = max(created_dates) if created_dates else now
+
             await session.commit()
-        print("✅ Тестовые данные успешно сгенерированы ✅")
+
+            # Теперь выводим статистику (после коммита, но используем сохраненные значения)
+            print("✅ Тестовые данные успешно сгенерированы ✅")
+            print(f"""
+📊 СТАТИСТИКА СОЗДАННЫХ ДАННЫХ:
+
+📚 Основные данные:
+• Пользователей: {len(all_users) + 1}  (+1 основной)
+• Админов: {len(all_admins)}
+• Книг: {len(books)}
+• Авторов: {len(authors)}
+• Отзывов: {len(reviews) + len(reviews2)}
+
+📞 Данные поддержки:
+• Обращений: {len(support_appeals)}
+  ├─ Новые (NEW): {new_count}
+  ├─ В работе (IN_WORK): {in_work_count}
+  ├─ Закрыто пользователями: {closed_by_user_count}
+  └─ Закрыто админами: {closed_by_admin_count}
+• Сообщений пользователей: {len(user_messages)}
+• Сообщений админов: {len(admin_messages)}
+
+🕒 Временной диапазон обращений:
+• Самое старое: {oldest_appeal.strftime("%d.%m.%Y %H:%M")}
+• Самое новое: {newest_appeal.strftime("%d.%m.%Y %H:%M")}
+            """)
+
+    @staticmethod
+    async def clear_all_data():
+        """Очистка ВСЕХ тестовых данных"""
+        async with AsyncSessionLocal() as session:
+            # Удаляем в правильном порядке (сначала дочерние таблицы)
+            tables = [
+                AdminMessage,
+                UserMessage,
+                SupportAppeal,
+                CartItem,
+                Review,
+                Cart,
+                User,
+                Book,
+                Author,
+                Admin,
+            ]
+
+            for table in tables:
+                await session.execute(table.__table__.delete())
+
+            await session.commit()
+            print("✅ Все тестовые данные очищены ✅")

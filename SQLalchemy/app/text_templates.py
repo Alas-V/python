@@ -248,6 +248,68 @@ async def text_appeal_split_messages(appeal) -> tuple[list[str], str]:
     return message_parts, main_text
 
 
+async def admin_personal_support_statistic(statistic_data: dict) -> str:
+    # Общая статистика (все админы)
+    total_appeals = statistic_data.get("total_appeals", 0)
+    appeals_today = statistic_data.get("appeals_today", 0)
+    new_appeals_today = statistic_data.get("new_appeals_today", 0)
+    in_work_today = statistic_data.get("in_work_today", 0)
+    closed_today_total = statistic_data.get("closed_today_total", 0)
+
+    # Статистика по приоритетам (все админы)
+    critical_appeals = statistic_data.get("critical_appeals", 0)
+    high_priority_appeals = statistic_data.get("high_priority_appeals", 0)
+
+    # ПЕРСОНАЛЬНАЯ статистика админа
+    admin_name = statistic_data.get("admin_name", "Администратор")
+    admin_active_appeals = statistic_data.get("admin_active_appeals", 0)
+    admin_closed_appeals = statistic_data.get("admin_closed_appeals", 0)
+    admin_new_appeals = statistic_data.get("admin_new_appeals", 0)
+    admin_responded_appeals = statistic_data.get("admin_responded_appeals", 0)
+    admin_overdue_appeals = statistic_data.get("admin_overdue_appeals", 0)
+
+    # Формируем сообщение о приоритетах
+    priority_msg = []
+    if critical_appeals > 0:
+        priority_msg.append(f"🚨 Критические: {critical_appeals}")
+    if high_priority_appeals > 0:
+        priority_msg.append(f"🔺 Высокие: {high_priority_appeals}")
+
+    priority_text = (
+        "\n".join(priority_msg)
+        if priority_msg
+        else "✅ Нет активных обращений с высоким приоритетом"
+    )
+
+    # Сообщение о просроченных обращениях
+    overdue_msg = ""
+    if admin_overdue_appeals > 0:
+        overdue_msg = f"⏰ Просрочено ответов: {admin_overdue_appeals}"
+
+    return f"""
+📊 ВАША СТАТИСТИКА ПОДДЕРЖКИ
+👤 {admin_name}
+📅 {statistic_data["stats_date"]} {statistic_data["generated_at"]}
+
+{priority_text}
+{overdue_msg}
+
+🎯 ВАША РАБОТА:
+• Назначенные вам: {admin_new_appeals + admin_active_appeals}
+  ├─ Новые: {admin_new_appeals}
+  └─ В работе: {admin_active_appeals}
+• Закрытые вами: {admin_closed_appeals}
+• С ответами: {admin_responded_appeals}
+
+📈 ОБЩАЯ СТАТИСТИКА СИСТЕМЫ:
+• Обращений сегодня: {appeals_today}
+  ├─ Новые: {new_appeals_today}
+  ├─ В работе: {in_work_today}
+  └─ Закрыто: {closed_today_total}
+• Всего обращений: {total_appeals}
+"""
+
+
 INFOTEXT = """📚 BookStore Demo Bot
 Прототип книжного магазина с полным циклом заказа
 
