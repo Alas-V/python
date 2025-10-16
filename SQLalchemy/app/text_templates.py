@@ -207,6 +207,7 @@ async def message_cooldown_text(seconds):
 
 
 status_dict = {
+    "new": "🆕 Новое",
     "in_work": "🔧 В работе",
     "closed_by_user": "✅ Вы закрыли это обращение",
     "closed_by_admin": "✅ Администратор закрыл это обращение ",
@@ -248,27 +249,159 @@ async def text_appeal_split_messages(appeal) -> tuple[list[str], str]:
     return message_parts, main_text
 
 
+async def admin_appeal_split_messages(
+    appeal, admin_name: str = None
+) -> tuple[list[str], str]:
+    if not appeal:
+        return [], "❌ Обращение не найдено"
+    priority_dict = {
+        "critical": "🚨 КРИТИЧЕСКИЙ",
+        "high": "🔺 Высокий",
+        "normal": "🔸 Обычный",
+        "low": "🔹 Низкий",
+    }
+    user_info = f"👤 {appeal.user.user_first_name}"
+    if appeal.user.username:
+        user_info += f" (@{appeal.user.username})"
+    main_text = f"""📨 *Обращение #{appeal.appeal_id}*
+{status_dict.get(appeal.status, appeal.status)}
+🎯 Приоритет: {priority_dict.get(appeal.priority, appeal.priority)}
+{user_info}
+📞 TG ID: `{appeal.telegram_id}`
+📅 Создано: {appeal.created_date.strftime("%d.%m.%Y %H:%M")}
+"""
+
+    if appeal.assigned_admin_id:
+        admin_info = "👨‍💻 Назначено: "
+        if appeal.assigned_admin:
+            admin_info += appeal.assigned_admin.name
+        else:
+            admin_info += "Администратор"
+        main_text += f"{admin_info}\n"
+
+    if not appeal.user_messages and not appeal.admin_messages:
+        return [], main_text + "\n\n📭 *Пока нет сообщений*"
+
+    all_messages = []
+
+    for msg in appeal.user_messages:
+        all_messages.append(
+            {
+                "type": "user",
+                "sender": "👤 Пользователь",
+                "time": msg.created_date,
+                "text": msg.message,
+            }
+        )
+
+    for msg in appeal.admin_messages:
+        sender_name = "🛠 Поддержка"
+        if msg.admin and admin_name and msg.admin.name == admin_name:
+            sender_name = f"👨‍💻 {msg.admin.name} (Вы)"
+        elif msg.admin:
+            sender_name = f"👨‍💻 {msg.admin.name}"
+
+        all_messages.append(
+            {
+                "type": "admin",
+                "sender": sender_name,
+                "time": msg.created_date,
+                "text": msg.admin_message,
+            }
+        )
+
+    all_messages.sort(key=lambda x: x["time"])
+
+    single_message_text = main_text + "\n\n*📝 История переписки:*\n\n"
+
+    for msg in all_messages:
+        message_line = (
+            f"{msg['sender']} ({msg['time'].strftime('%H:%M')}):\n{msg['text']}\n\n"
+        )
+        single_message_text += message_line
+
+    if len(single_message_text) <= 4000:
+        return [], single_message_text
+
+    message_parts = []
+    current_part = main_text + "\n\n*📝 История переписки:*\n\n"
+
+    for msg in all_messages:
+        message_line = (
+            f"{msg['sender']} ({msg['time'].strftime('%H:%M')}):\n{msg['text']}\n\n"
+        )
+
+        if len(current_part) + len(message_line) > 4000:
+            message_parts.append(current_part)
+            current_part = (
+                f"*📄 Продолжение обращения #{appeal.appeal_id}:*\n\n" + message_line
+            )
+        else:
+            current_part += message_line
+
+    if current_part and current_part != main_text + "\n\n*📝 История переписки:*\n\n":
+        message_parts.append(current_part)
+    return message_parts, main_text
+
+
+async def admin_message_rules() -> str:
+    """
+    Правила и подсказки для админов при отправке сообщений пользователям
+    """
+    return """
+💡 *ПРАВИЛА ОБЩЕНИЯ С ПОЛЬЗОВАТЕЛЯМИ*
+
+📝 *Основные принципы:*
+• Будьте вежливы и профессиональны
+• Обращайтесь к пользователю по имени
+• Сообщайте информацию четко и понятно
+• Сохраняйте спокойный тон даже в сложных ситуациях
+
+⏰ *Сроки ответа:*
+• Стандартные обращения - ответ в течение 24 часов
+• Критические проблемы - ответ в течение 1-2 часов
+• Высокий приоритет - ответ в течение 4-6 часов
+
+🔒 *Безопасность:*
+• Не запрашивайте пароли и платежные данные
+• Не переходите по подозрительным ссылкам от пользователей
+• Не разглашайте личную информацию других пользователей
+• Сообщайте о подозрительных действиях старшему админу
+
+📋 *Формат ответов:*
+• Приветствие и обращение по имени
+• Четкий ответ на вопрос
+• Предложение дальнейшей помощи
+• Подпись (ваше имя)
+
+🚫 *Запрещено:*
+• Грубость и неуважительное общение
+• Использование ненормативной лексики
+• Оскорбления пользователей
+• Обсуждение внутренней информации компании
+
+📞 *Эскалация проблем:*
+• Сложные технические вопросы → передайте старшему админу
+• Жалобы на других админов → немедленно старшему админу
+• Подозрения на мошенничество → срочно старшему админу
+
+*Теперь вы можете отправить ответ пользователю. Ваше сообщение будет доставлено сразу после отправки.*
+"""
+
+
 async def admin_personal_support_statistic(statistic_data: dict) -> str:
-    # Общая статистика (все админы)
     total_appeals = statistic_data.get("total_appeals", 0)
     appeals_today = statistic_data.get("appeals_today", 0)
     new_appeals_today = statistic_data.get("new_appeals_today", 0)
     in_work_today = statistic_data.get("in_work_today", 0)
     closed_today_total = statistic_data.get("closed_today_total", 0)
-
-    # Статистика по приоритетам (все админы)
     critical_appeals = statistic_data.get("critical_appeals", 0)
     high_priority_appeals = statistic_data.get("high_priority_appeals", 0)
-
-    # ПЕРСОНАЛЬНАЯ статистика админа
     admin_name = statistic_data.get("admin_name", "Администратор")
     admin_active_appeals = statistic_data.get("admin_active_appeals", 0)
     admin_closed_appeals = statistic_data.get("admin_closed_appeals", 0)
-    admin_new_appeals = statistic_data.get("admin_new_appeals", 0)
-    admin_responded_appeals = statistic_data.get("admin_responded_appeals", 0)
+    admin_responses_today = statistic_data.get("admin_responses_today", 0)
     admin_overdue_appeals = statistic_data.get("admin_overdue_appeals", 0)
-
-    # Формируем сообщение о приоритетах
     priority_msg = []
     if critical_appeals > 0:
         priority_msg.append(f"🚨 Критические: {critical_appeals}")
@@ -280,26 +413,21 @@ async def admin_personal_support_statistic(statistic_data: dict) -> str:
         if priority_msg
         else "✅ Нет активных обращений с высоким приоритетом"
     )
-
-    # Сообщение о просроченных обращениях
     overdue_msg = ""
     if admin_overdue_appeals > 0:
-        overdue_msg = f"⏰ Просрочено ответов: {admin_overdue_appeals}"
+        overdue_msg = f"⏰ Просрочено ответов: {admin_overdue_appeals}\n"
 
     return f"""
-📊 ВАША СТАТИСТИКА ПОДДЕРЖКИ
+📊 СТАТИСТИКА ПОДДЕРЖКИ
 👤 {admin_name}
 📅 {statistic_data["stats_date"]} {statistic_data["generated_at"]}
 
 {priority_text}
 {overdue_msg}
-
 🎯 ВАША РАБОТА:
-• Назначенные вам: {admin_new_appeals + admin_active_appeals}
-  ├─ Новые: {admin_new_appeals}
-  └─ В работе: {admin_active_appeals}
+• В работе: {admin_active_appeals}
 • Закрытые вами: {admin_closed_appeals}
-• С ответами: {admin_responded_appeals}
+• Ответов сегодня: {admin_responses_today}
 
 📈 ОБЩАЯ СТАТИСТИКА СИСТЕМЫ:
 • Обращений сегодня: {appeals_today}

@@ -112,7 +112,7 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
             parse_mode="Markdown",
         )
         messages_to_delete.append(main_message.message_id)
-    if status == "in_work":
+    if status == "new":
         hint_message = await callback.message.answer(
             text="💌 Опишите ваш вопрос или проблему в сообщении ниже\nМы ответим в ближайшее время!"
         )

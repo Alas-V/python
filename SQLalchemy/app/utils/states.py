@@ -23,3 +23,7 @@ class ReviewState(StatesGroup):
 
 class SupportState(StatesGroup):
     message_to_support = State()
+
+
+class AdminSupportState(StatesGroup):
+    message_from_support = State()

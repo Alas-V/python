@@ -17,6 +17,7 @@ from models import (
     SupportAppeal,
     Admin,
     AdminPermission,
+    PriorityStatus,
 )
 from faker import Faker
 import random
@@ -599,6 +600,7 @@ class SupportQueries:
         async with AsyncSessionLocal() as session:
             appeal = SupportAppeal(
                 telegram_id=telegram_id,
+                priority=PriorityStatus.NORMAL,
             )
             session.add(appeal)
             await session.flush()
@@ -651,8 +653,9 @@ class SupportQueries:
             last_message = result.scalar_one_or_none()
             if not last_message:
                 return True
-            time_passed = datetime.utcnow() - last_message
-            return time_passed.total_seconds() >= 120
+            return True
+            # time_passed = datetime.utcnow() - last_message
+            # return time_passed.total_seconds() >= 120
 
     @staticmethod
     async def get_message_cooldown_seconds(telegram_id: int) -> str:
@@ -1098,7 +1101,6 @@ class AdminQueries:
                 select(Admin).where(Admin.telegram_id == telegram_id)
             )
             admin = result.scalar_one_or_none()
-            print(f"Found admin: {admin}")
             return admin
 
     @staticmethod
@@ -1121,29 +1123,20 @@ class AdminQueries:
 
     @staticmethod
     async def get_admin_support_statistics(telegram_id: int) -> dict:
-        """
-        Статистика поддержки ТОЛЬКО для конкретного админа
-        """
         async with AsyncSessionLocal() as session:
             today = datetime.now().date()
             today_start = datetime.combine(today, datetime.min.time())
-
-            # Получаем admin_id из telegram_id
             admin_query = select(Admin.admin_id, Admin.name).where(
                 Admin.telegram_id == telegram_id
             )
             admin_result = await session.execute(admin_query)
             admin_row = admin_result.first()
-
             if not admin_row:
                 return {"error": "Администратор не найден"}
-
             admin_id, admin_name = admin_row
-
-            # Чистый SQL запрос БЕЗ отсутствующих полей
             sql_query = text("""
                 SELECT 
-                    -- ОБЩАЯ статистика (все админы могут видеть общие цифры)
+                    -- ОБЩАЯ статистика системы
                     COUNT(sa.appeal_id) as total_appeals,
                     COUNT(CASE WHEN sa.created_date >= :today_start THEN 1 END) as appeals_today,
                     
@@ -1153,17 +1146,22 @@ class AdminQueries:
                     COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'closed_by_admin' THEN 1 END) as closed_by_admin_today,
                     COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'closed_by_user' THEN 1 END) as closed_by_user_today,
                     
-                    -- Общая статистика по приоритетам (только активные)
+                    -- Статистика по приоритетам (только новые и в работе)
                     COUNT(CASE WHEN sa.priority = 'critical' AND sa.status IN ('new', 'in_work') THEN 1 END) as critical_count,
                     COUNT(CASE WHEN sa.priority = 'high' AND sa.status IN ('new', 'in_work') THEN 1 END) as high_count,
                     COUNT(CASE WHEN sa.priority = 'normal' AND sa.status IN ('new', 'in_work') THEN 1 END) as normal_count,
                     
-                    -- ПЕРСОНАЛЬНАЯ статистика админа (только его обращения)
+                    -- ПЕРСОНАЛЬНАЯ статистика админа (обращения, которые он взял)
                     COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'in_work' THEN 1 END) as admin_active,
                     COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'closed_by_admin' THEN 1 END) as admin_closed,
-                    COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'new' THEN 1 END) as admin_new,
                     
-                    -- Обращения, ожидающие ответа этого админа более 24 часов (используем existing поле updated_at)
+                    -- Статистика ответов админа (количество сообщений, которые он отправил сегодня)
+                    (SELECT COUNT(am.message_id) 
+                    FROM admin_messages am 
+                    WHERE am.admin_id = :admin_id 
+                    AND am.created_date >= :today_start) as admin_responses_today,
+                    
+                    -- Обращения, которые админ взял, но не ответил более 24 часов
                     COUNT(CASE WHEN 
                         sa.assigned_admin_id = :admin_id 
                         AND sa.status = 'in_work' 
@@ -1172,20 +1170,14 @@ class AdminQueries:
                     
                 FROM support_appeals sa
             """)
-
-            # Параметры для запроса
             params = {"today_start": today_start, "admin_id": admin_id}
-
             result = await session.execute(sql_query, params)
             row = result.fetchone()
-
-            # Общее количество закрытых за сегодня (всех админов)
             today_closed_total = (row.closed_by_admin_today or 0) + (
                 row.closed_by_user_today or 0
             )
-
             return {
-                # Общая статистика (все админы)
+                # Общая статистика системы
                 "total_appeals": row.total_appeals or 0,
                 "appeals_today": row.appeals_today or 0,
                 "new_appeals_today": row.new_today or 0,
@@ -1193,20 +1185,66 @@ class AdminQueries:
                 "closed_today_total": today_closed_total,
                 "closed_by_admin_today": row.closed_by_admin_today or 0,
                 "closed_by_user_today": row.closed_by_user_today or 0,
-                # Статистика по приоритетам (все админы)
+                # Статистика по приоритетам
                 "critical_appeals": row.critical_count or 0,
                 "high_priority_appeals": row.high_count or 0,
                 "normal_priority_appeals": row.normal_count or 0,
-                # ПЕРСОНАЛЬНАЯ статистика этого админа
+                # ПЕРСОНАЛЬНАЯ статистика админа
                 "admin_name": admin_name,
                 "admin_active_appeals": row.admin_active or 0,
                 "admin_closed_appeals": row.admin_closed or 0,
-                "admin_new_appeals": row.admin_new or 0,
+                "admin_responses_today": row.admin_responses_today or 0,
                 "admin_overdue_appeals": row.admin_overdue or 0,
                 # Временные метки
                 "stats_date": today.strftime("%d.%m.%Y"),
                 "generated_at": datetime.now().strftime("%H:%M"),
             }
+
+    @staticmethod
+    async def get_new_appeal():
+        async with AsyncSessionLocal() as session:
+            appeal = await session.execute(
+                select(SupportAppeal)
+                .options(
+                    selectinload(SupportAppeal.user_messages),
+                    selectinload(SupportAppeal.admin_messages),
+                    selectinload(SupportAppeal.user),
+                )
+                .where(
+                    and_(
+                        SupportAppeal.assigned_admin_id.is_(None),
+                        SupportAppeal.status == AppealStatus.NEW,
+                    )
+                )
+                .order_by(SupportAppeal.priority.desc(), SupportAppeal.created_date)
+                .limit(1)
+            )
+            new_appeal = appeal.scalar_one_or_none()
+            return new_appeal
+
+    @staticmethod
+    async def assign_appeal_to_admin(appeal_id: int, admin_telegram_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            admin_query = select(Admin.admin_id).where(
+                Admin.telegram_id == admin_telegram_id
+            )
+            admin_result = await session.execute(admin_query)
+            admin_row = admin_result.first()
+            if not admin_row:
+                return False
+            admin_id = admin_row[0]
+            stmt = (
+                update(SupportAppeal)
+                .where(SupportAppeal.appeal_id == appeal_id)
+                .values(
+                    assigned_admin_id=admin_id,
+                    status=AppealStatus.IN_WORK,
+                    updated_at=datetime.now(),
+                )
+            )
+            await session.execute(stmt)
+            await session.commit()
+            return True
 
 
 class DBData:
@@ -1362,10 +1400,9 @@ class DBData:
             )
             session.add(cart_item)
 
-            # ТЕПЕРЬ СОЗДАЕМ ТЕСТОВЫЕ ОБРАЩЕНИЯ ПОДДЕРЖКИ
             print("🔄 Создание тестовых обращений поддержки...")
 
-            # Получаем всех пользователей и админов для создания обращений
+            # Получаем всех пользователей и админов
             all_users_result = await session.execute(select(User))
             all_users = all_users_result.scalars().all()
 
@@ -1386,45 +1423,43 @@ class DBData:
             yesterday = today - timedelta(days=1)
             last_week = today - timedelta(days=7)
 
-            # Все возможные статусы
-            statuses = [
-                AppealStatus.NEW,
-                AppealStatus.IN_WORK,
-                AppealStatus.CLOSED_BY_USER,
-                AppealStatus.CLOSED_BY_ADMIN,
-            ]
             priorities = ["low", "normal", "high", "critical"]
 
-            # Создаем 25 тестовых обращений
+            # Создаем 25 тестовых обращений с правильным распределением статусов
             for i in range(25):
                 user = random.choice(all_users)
-                admin = random.choice(all_admins) if random.random() > 0.3 else None
 
-                # Разное время создания
-                if i < 8:  # Сегодня
+                # Распределяем статусы:
+                # - 40% новых обращений (без назначенного админа)
+                # - 30% в работе (с назначенным админом)
+                # - 15% закрыто пользователем
+                # - 15% закрыто админом (с назначенным админом)
+                if i < 10:  # 40% - Новые обращения
+                    status = AppealStatus.NEW
+                    admin = None  # Без назначенного админа
                     created_date = now - timedelta(hours=random.randint(1, 23))
-                    status = random.choice([AppealStatus.NEW, AppealStatus.IN_WORK])
-                elif i < 16:  # Вчера
+                elif i < 17:  # 28% - В работе
+                    status = AppealStatus.IN_WORK
+                    admin = random.choice(all_admins)  # С назначенным админом
                     created_date = datetime.combine(yesterday, now.time()) - timedelta(
                         hours=random.randint(1, 23)
                     )
-                    status = random.choice(statuses)
-                else:  # На прошлой неделе
+                elif i < 21:  # 16% - Закрыто пользователем
+                    status = AppealStatus.CLOSED_BY_USER
+                    admin = (
+                        random.choice(all_admins) if random.random() > 0.5 else None
+                    )  # 50% с админом
                     created_date = datetime.combine(last_week, now.time()) + timedelta(
                         days=random.randint(0, 6)
                     )
-                    status = random.choice(
-                        [AppealStatus.CLOSED_BY_USER, AppealStatus.CLOSED_BY_ADMIN]
+                else:  # 16% - Закрыто админом
+                    status = AppealStatus.CLOSED_BY_ADMIN
+                    admin = random.choice(all_admins)  # Всегда с назначенным админом
+                    created_date = datetime.combine(last_week, now.time()) - timedelta(
+                        days=random.randint(8, 30)
                     )
 
                 priority = random.choice(priorities)
-
-                # Для обращений в работе и закрытых админом должен быть назначен админ
-                if (
-                    status in [AppealStatus.IN_WORK, AppealStatus.CLOSED_BY_ADMIN]
-                    and not admin
-                ):
-                    admin = random.choice(all_admins)
 
                 # Создаем обращение
                 appeal = SupportAppeal(
@@ -1454,8 +1489,8 @@ class DBData:
                     user_messages.append(user_message)
                     session.add(user_message)
 
-                # Сообщения от админа (если обращение в работе или закрыто)
-                if appeal.status != AppealStatus.NEW and appeal.assigned_admin_id:
+                # Сообщения от админа (только для обращений с назначенным админом и не новых)
+                if appeal.assigned_admin_id and appeal.status != AppealStatus.NEW:
                     admin_msg_count = random.randint(1, 2)
                     for k in range(admin_msg_count):
                         admin_message = AdminMessage(
@@ -1473,7 +1508,7 @@ class DBData:
                         hours=random.randint(1, 24)
                     )
 
-            # Собираем статистику ДО коммита, пока объекты еще в сессии
+            # Собираем статистику ДО коммита
             new_count = len(
                 [a for a in support_appeals if a.status == AppealStatus.NEW]
             )
@@ -1487,37 +1522,56 @@ class DBData:
                 [a for a in support_appeals if a.status == AppealStatus.CLOSED_BY_ADMIN]
             )
 
-            # Получаем временные метки ДО коммита
+            # Статистика по назначениям
+            assigned_count = len(
+                [a for a in support_appeals if a.assigned_admin_id is not None]
+            )
+            unassigned_count = len(
+                [a for a in support_appeals if a.assigned_admin_id is None]
+            )
+
+            # Получаем временные метки
             created_dates = [a.created_date for a in support_appeals]
             oldest_appeal = min(created_dates) if created_dates else now
             newest_appeal = max(created_dates) if created_dates else now
 
             await session.commit()
 
-            # Теперь выводим статистику (после коммита, но используем сохраненные значения)
+            # Выводим статистику
             print("✅ Тестовые данные успешно сгенерированы ✅")
             print(f"""
-📊 СТАТИСТИКА СОЗДАННЫХ ДАННЫХ:
+    📊 СТАТИСТИКА СОЗДАННЫХ ДАННЫХ:
 
-📚 Основные данные:
-• Пользователей: {len(all_users) + 1}  (+1 основной)
-• Админов: {len(all_admins)}
-• Книг: {len(books)}
-• Авторов: {len(authors)}
-• Отзывов: {len(reviews) + len(reviews2)}
+    📚 Основные данные:
+    • Пользователей: {len(all_users) + 1}  (+1 основной)
+    • Админов: {len(all_admins)}
+    • Книг: {len(books)}
+    • Авторов: {len(authors)}
+    • Отзывов: {len(reviews) + len(reviews2)}
 
-📞 Данные поддержки:
-• Обращений: {len(support_appeals)}
-  ├─ Новые (NEW): {new_count}
-  ├─ В работе (IN_WORK): {in_work_count}
-  ├─ Закрыто пользователями: {closed_by_user_count}
-  └─ Закрыто админами: {closed_by_admin_count}
-• Сообщений пользователей: {len(user_messages)}
-• Сообщений админов: {len(admin_messages)}
+    📞 Данные поддержки:
+    • Обращений: {len(support_appeals)}
+    ├─ Новые (NEW): {new_count} (без назначения)
+    ├─ В работе (IN_WORK): {in_work_count} (с назначением)
+    ├─ Закрыто пользователями: {closed_by_user_count}
+    └─ Закрыто админами: {closed_by_admin_count} (с назначением)
 
-🕒 Временной диапазон обращений:
-• Самое старое: {oldest_appeal.strftime("%d.%m.%Y %H:%M")}
-• Самое новое: {newest_appeal.strftime("%d.%m.%Y %H:%M")}
+    📋 Назначения:
+    • С назначенным админом: {assigned_count}
+    • Без назначения: {unassigned_count}
+
+    💬 Сообщений:
+    • От пользователей: {len(user_messages)}
+    • От админов: {len(admin_messages)}
+
+    🕒 Временной диапазон обращений:
+    • Самое старое: {oldest_appeal.strftime("%d.%m.%Y %H:%M")}
+    • Самое новое: {newest_appeal.strftime("%d.%m.%Y %H:%M")}
+
+    💡 Для тестирования:
+    • Новые обращения можно брать через "Взять новое обращение"
+    • Обращения в работе уже назначены на админов
+    • Закрытые обращения показывают историю работы
             """)
 
     @staticmethod

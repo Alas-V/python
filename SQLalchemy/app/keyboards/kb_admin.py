@@ -65,13 +65,31 @@ class KbAdmin:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
+    async def admin_agreement() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="✅ Согласен с правилами общения",
+                        callback_data="support_take_new",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data="admin_main_support"
+                    )
+                ],
+            ]
+        )
+
+    @staticmethod
     async def support_main_keyboard() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
                         text="🎯 Взять новое обращение",
-                        callback_data="support_take_new",
+                        callback_data="agreement_before_new_appeal",
                     )
                 ],
                 [
@@ -89,6 +107,31 @@ class KbAdmin:
                 [
                     InlineKeyboardButton(
                         text="📊 Обновить статистику", callback_data="support_my_stats"
+                    )
+                ],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")],
+            ]
+        )
+
+    @staticmethod
+    async def support_appeal_actions_keyboard(appeal_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="💬 Ответить пользователю",
+                        callback_data=f"support_reply_{appeal_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔒 Закрыть обращение",
+                        callback_data=f"support_close_{appeal_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="◀️ Назад в поддержку", callback_data="admin_main_support"
                     )
                 ],
             ]
