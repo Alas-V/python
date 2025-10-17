@@ -653,9 +653,9 @@ class SupportQueries:
             last_message = result.scalar_one_or_none()
             if not last_message:
                 return True
-            return True
-            # time_passed = datetime.utcnow() - last_message
-            # return time_passed.total_seconds() >= 120
+            # return True # для дебага , убирает cooldown для пользовательских сообщений
+            time_passed = datetime.utcnow() - last_message
+            return time_passed.total_seconds() >= 120
 
     @staticmethod
     async def get_message_cooldown_seconds(telegram_id: int) -> str:
@@ -736,6 +736,19 @@ class SupportQueries:
             await session.execute(stmt)
             await session.commit()
             return True
+
+    @staticmethod
+    async def has_user_msg(appeal_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(SupportAppeal.user_messages).where(
+                    SupportAppeal.appeal_id == appeal_id
+                )
+            )
+            msg = result.scalar_one_or_none()
+            if msg:
+                return True
+            return False
 
 
 class OrderQueries:
@@ -1223,6 +1236,21 @@ class AdminQueries:
             return new_appeal
 
     @staticmethod
+    async def get_admin_appeal_by_id(appeal_id: int):
+        async with AsyncSessionLocal() as session:
+            appeal = await session.execute(
+                select(SupportAppeal)
+                .options(
+                    selectinload(SupportAppeal.user_messages),
+                    selectinload(SupportAppeal.admin_messages),
+                    selectinload(SupportAppeal.user),
+                )
+                .where(SupportAppeal.appeal_id == appeal_id)
+            )
+            appeal_data = appeal.scalar_one_or_none()
+            return appeal_data
+
+    @staticmethod
     async def assign_appeal_to_admin(appeal_id: int, admin_telegram_id: int) -> bool:
         async with AsyncSessionLocal() as session:
             admin_query = select(Admin.admin_id).where(
@@ -1243,6 +1271,18 @@ class AdminQueries:
                 )
             )
             await session.execute(stmt)
+            await session.commit()
+            return True
+
+    @staticmethod
+    async def admin_support_to_user(
+        admin_id: int, appeal_id: int, message: str
+    ) -> bool:
+        async with AsyncSessionLocal() as session:
+            admin_msg = AdminMessage(
+                admin_message=message, admin_id=admin_id, appeal_id=appeal_id
+            )
+            session.add(admin_msg)
             await session.commit()
             return True
 

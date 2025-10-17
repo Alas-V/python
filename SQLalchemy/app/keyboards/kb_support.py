@@ -61,7 +61,7 @@ class SupportKeyboards:
     @staticmethod
     async def kb_in_appeal(appeal_id: id, status: str) -> InlineKeyboardMarkup:
         keyboard = []
-        if status == "in_work":
+        if status == "in_work" or status == "new":
             # keyboard.append(
             #     [
             #         InlineKeyboardButton(

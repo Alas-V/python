@@ -120,7 +120,7 @@ class KbAdmin:
                 [
                     InlineKeyboardButton(
                         text="💬 Ответить пользователю",
-                        callback_data=f"support_reply_{appeal_id}",
+                        callback_data=f"admin_support_reply_{appeal_id}",
                     )
                 ],
                 [

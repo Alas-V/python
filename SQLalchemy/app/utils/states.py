@@ -27,3 +27,4 @@ class SupportState(StatesGroup):
 
 class AdminSupportState(StatesGroup):
     message_from_support = State()
+    waiting_for_message = State()

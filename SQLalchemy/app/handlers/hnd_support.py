@@ -112,7 +112,8 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
             parse_mode="Markdown",
         )
         messages_to_delete.append(main_message.message_id)
-    if status == "new":
+    has_user_msg = await SupportQueries.has_user_msg(appeal_id)
+    if not has_user_msg:
         hint_message = await callback.message.answer(
             text="💌 Опишите ваш вопрос или проблему в сообщении ниже\nМы ответим в ближайшее время!"
         )
@@ -120,12 +121,11 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
         messages_to_delete.append(last_hint_id)
         await state.update_data(
             appeal_id=appeal_id,
-            last_hint_id=last_hint_id,
+            last_hint_id=messages_to_delete,
             main_message_id=main_message.message_id,
-            user_messages=messages_to_delete,
         )
-        await callback.answer()
-        await state.set_state(SupportState.message_to_support)
+    await callback.answer()
+    await state.set_state(SupportState.message_to_support)
 
 
 @support_router.callback_query(F.data.startswith("close_appeal_"))
