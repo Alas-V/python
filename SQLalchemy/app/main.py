@@ -11,19 +11,6 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from config import TOKEN
 from handlers import setup_router
-# from queries.orm import AdminQueries
-
-
-# async def check_admin_access():
-#     your_telegram_id = 717149416
-#     admin = await AdminQueries.get_admin_by_telegram_id(your_telegram_id)
-#     print(f"Admin data: {admin}")
-#     if admin:
-#         print(f"Permissions: {admin.permissions}")
-#         print(f"Role: {admin.role_name}")
-#     else:
-#         print("User not found in admin table")
-
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()

@@ -653,9 +653,9 @@ class SupportQueries:
             last_message = result.scalar_one_or_none()
             if not last_message:
                 return True
-            # return True # для дебага , убирает cooldown для пользовательских сообщений
-            time_passed = datetime.utcnow() - last_message
-            return time_passed.total_seconds() >= 120
+            return True  # для дебага , убирает cooldown для пользовательских сообщений
+            # time_passed = datetime.utcnow() - last_message
+            # return time_passed.total_seconds() >= 120
 
     @staticmethod
     async def get_message_cooldown_seconds(telegram_id: int) -> str:
@@ -741,14 +741,12 @@ class SupportQueries:
     async def has_user_msg(appeal_id: int) -> bool:
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(SupportAppeal.user_messages).where(
-                    SupportAppeal.appeal_id == appeal_id
+                select(func.count(UserMessage.message_id)).where(
+                    UserMessage.appeal_id == appeal_id
                 )
             )
-            msg = result.scalar_one_or_none()
-            if msg:
-                return True
-            return False
+            count = result.scalar()
+            return count > 0
 
 
 class OrderQueries:

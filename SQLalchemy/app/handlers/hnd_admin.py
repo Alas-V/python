@@ -4,6 +4,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from middleware.mw_admin import AdminMiddleware
 from keyboards.kb_admin import KbAdmin
+from keyboards.kb_support import SupportKeyboards
 from queries.orm import AdminQueries, SupportQueries
 from functools import wraps
 from typing import Union
@@ -114,14 +115,16 @@ async def support_take_new(
     )
     message_parts, main_text = await admin_appeal_split_messages(new_appeal, admin_name)
     messages_to_delete = []
+    await callback.message.delete()
     if not message_parts:
-        await callback.message.edit_text(
+        main_message = await callback.message.answer(
             text=main_text,
             reply_markup=await KbAdmin.support_appeal_actions_keyboard(
                 new_appeal.appeal_id
             ),
             parse_mode="Markdown",
         )
+        messages_to_delete.append(main_message.message_id)
     else:
         for i, part in enumerate(message_parts):
             part_text = part
@@ -136,12 +139,14 @@ async def support_take_new(
             ),
             parse_mode="Markdown",
         )
-        await state.update_data(
-            last_hint_id=messages_to_delete, main_message_id=main_message.message_id
-        )
+    await state.update_data(
+        appeal_id=new_appeal.appeal_id,
+        messages_to_delete=messages_to_delete,
+        main_message_id=main_message.message_id,
+        user_telegram_id=new_appeal.telegram_id,
+        current_step="in_support",
+    )
     await callback.answer(f"✅ Обращение #{new_appeal.appeal_id} взято в работу")
-    await state.update_data(current_step="in_support")
-    # await state.set_state(AdminSupportState.message_from_support)
 
 
 @admin_router.callback_query(F.data.startswith("admin_support_reply_"))
@@ -230,6 +235,7 @@ async def message_from_support(
                 chat_id=appeal.telegram_id,
                 text=f"🛠 *Ответ службы поддержки:*\n\n{message.text}\n\n— {admin_name}",
                 parse_mode="Markdown",
+                reply_markup=await SupportKeyboards.open_appel(appeal_id),
             )
         except Exception as e:
             print(f"Не удалось отправить сообщение пользователю: {e}")

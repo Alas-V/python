@@ -106,6 +106,7 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
                 part_text = f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
             msg = await callback.message.answer(part_text, parse_mode="Markdown")
             messages_to_delete.append(msg.message_id)
+
         main_message = await callback.message.answer(
             text=main_text,
             reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
@@ -117,13 +118,12 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
         hint_message = await callback.message.answer(
             text="💌 Опишите ваш вопрос или проблему в сообщении ниже\nМы ответим в ближайшее время!"
         )
-        last_hint_id = hint_message.message_id
-        messages_to_delete.append(last_hint_id)
-        await state.update_data(
-            appeal_id=appeal_id,
-            last_hint_id=messages_to_delete,
-            main_message_id=main_message.message_id,
-        )
+        messages_to_delete.append(hint_message.message_id)
+    await state.update_data(
+        appeal_id=appeal_id,
+        messages_to_delete=messages_to_delete,
+        main_message_id=main_message.message_id,
+    )
     await callback.answer()
     await state.set_state(SupportState.message_to_support)
 
@@ -150,6 +150,12 @@ async def appeal_sure_close(callback: CallbackQuery):
         reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
     )
     await callback.answer("✅ Обращение закрыто")
+
+
+@support_router.callback_query(F.data.startswith("new_message_to_support_"))
+async def new_msg_to_support(callback: CallbackQuery, state: FSMContext):
+    appeal_id = int(callback.data.split("_")[4])
+    pass
 
 
 # FMScontext hnd

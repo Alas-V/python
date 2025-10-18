@@ -62,14 +62,15 @@ class SupportKeyboards:
     async def kb_in_appeal(appeal_id: id, status: str) -> InlineKeyboardMarkup:
         keyboard = []
         if status == "in_work" or status == "new":
-            # keyboard.append(
-            #     [
-            #         InlineKeyboardButton(
-            #             text="📝 Новое сообщение",
-            #             callback_data=f"new_message_appeal_{appeal_id}",
-            #         )
-            #     ]
-            # )
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="✏️ Написать сообщение администратору",
+                        callback_data=f"new_message_to_support_{appeal_id}",
+                    )
+                ],
+            )
             keyboard.append(
                 [
                     InlineKeyboardButton(
@@ -110,6 +111,19 @@ class SupportKeyboards:
                         text="✅ Закрыть",
                         callback_data=f"appeal_sure_close_{appeal_id}",
                     ),
+                ]
+            ]
+        )
+
+    @staticmethod
+    async def open_appel(appeal_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Открыть обращение",
+                        callback_data=f"open_appeal_{appeal_id}",
+                    )
                 ]
             ]
         )
