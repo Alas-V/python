@@ -217,8 +217,8 @@ status_dict = {
 async def text_appeal_split_messages(appeal) -> tuple[list[str], str]:
     if not appeal:
         return [], "❌ Обращение не найдено"
-    main_text = f"""📨 *Обращение #{appeal.appeal_id}* {status_dict[appeal.status]}
-
+    status_text = status_dict.get(appeal.status, appeal.status)
+    main_text = f"""📨 *Обращение #{appeal.appeal_id}* {status_text}
 📅 Создано: {appeal.created_date.strftime("%d.%m.%Y %H:%M")} 
 """
     if not appeal.user_messages and not appeal.admin_messages:
@@ -229,22 +229,23 @@ async def text_appeal_split_messages(appeal) -> tuple[list[str], str]:
     for msg in appeal.admin_messages:
         all_messages.append(("🛠 Поддержка", msg.created_date, msg.admin_message))
     all_messages.sort(key=lambda x: x[1])
-    single_message_text = main_text + "\n\n*История обращения:*\n\n"
+    history_text = "*📝 История переписки:*\n\n"
     for sender, time, text in all_messages:
         message_line = f"{sender} ({time.strftime('%H:%M')}):\n{text}\n\n"
-        single_message_text += message_line
-    if len(single_message_text) <= 4000:
-        return [], single_message_text
+        history_text += message_line
+    full_text = main_text + "\n\n" + history_text
+    if len(full_text) <= 4000:
+        return [], full_text
     message_parts = []
-    current_part = "*История обращений:*\n\n"
+    current_part = "*📝 История переписки:*\n\n"
     for sender, time, text in all_messages:
         message_line = f"{sender} ({time.strftime('%H:%M')}):\n{text}\n\n"
         if len(current_part) + len(message_line) > 4000:
             message_parts.append(current_part)
-            current_part = "*Продолжение:*\n\n" + message_line
+            current_part = f"*📄 Продолжение истории обращения #{appeal.appeal_id}:*\n\n{message_line}"
         else:
             current_part += message_line
-    if current_part and current_part != "*История обращений:*\n\n":
+    if current_part and current_part != "*📝 История переписки:*\n\n":
         message_parts.append(current_part)
     return message_parts, main_text
 
@@ -270,7 +271,6 @@ async def admin_appeal_split_messages(
 📞 TG ID: `{appeal.telegram_id}`
 📅 Создано: {appeal.created_date.strftime("%d.%m.%Y %H:%M")}
 """
-
     if appeal.assigned_admin_id:
         admin_info = "👨‍💻 Назначено: "
         if appeal.assigned_admin:
@@ -278,12 +278,9 @@ async def admin_appeal_split_messages(
         else:
             admin_info += "Администратор"
         main_text += f"{admin_info}\n"
-
     if not appeal.user_messages and not appeal.admin_messages:
         return [], main_text + "\n\n📭 *Пока нет сообщений*"
-
     all_messages = []
-
     for msg in appeal.user_messages:
         all_messages.append(
             {
@@ -293,14 +290,12 @@ async def admin_appeal_split_messages(
                 "text": msg.message,
             }
         )
-
     for msg in appeal.admin_messages:
         sender_name = "🛠 Поддержка"
         if msg.admin and admin_name and msg.admin.name == admin_name:
             sender_name = f"👨‍💻 {msg.admin.name} (Вы)"
         elif msg.admin:
             sender_name = f"👨‍💻 {msg.admin.name}"
-
         all_messages.append(
             {
                 "type": "admin",
@@ -309,37 +304,28 @@ async def admin_appeal_split_messages(
                 "text": msg.admin_message,
             }
         )
-
     all_messages.sort(key=lambda x: x["time"])
-
-    single_message_text = main_text + "\n\n*📝 История переписки:*\n\n"
-
+    history_text = "*📝 История переписки:*\n\n"
     for msg in all_messages:
         message_line = (
             f"{msg['sender']} ({msg['time'].strftime('%H:%M')}):\n{msg['text']}\n\n"
         )
-        single_message_text += message_line
-
-    if len(single_message_text) <= 4000:
-        return [], single_message_text
-
+        history_text += message_line
+    full_text = main_text + "\n\n" + history_text
+    if len(full_text) <= 4000:
+        return [], full_text
     message_parts = []
-    current_part = main_text + "\n\n*📝 История переписки:*\n\n"
-
+    current_part = "*📝 История переписки:*\n\n"
     for msg in all_messages:
         message_line = (
             f"{msg['sender']} ({msg['time'].strftime('%H:%M')}):\n{msg['text']}\n\n"
         )
-
         if len(current_part) + len(message_line) > 4000:
             message_parts.append(current_part)
-            current_part = (
-                f"*📄 Продолжение обращения #{appeal.appeal_id}:*\n\n" + message_line
-            )
+            current_part = f"*📄 Продолжение истории обращения #{appeal.appeal_id}:*\n\n{message_line}"
         else:
             current_part += message_line
-
-    if current_part and current_part != main_text + "\n\n*📝 История переписки:*\n\n":
+    if current_part and current_part != "*📝 История переписки:*\n\n":
         message_parts.append(current_part)
     return message_parts, main_text
 

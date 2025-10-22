@@ -1440,177 +1440,178 @@ class DBData:
 
             print("🔄 Создание тестовых обращений поддержки...")
 
-            # Получаем всех пользователей и админов
-            all_users_result = await session.execute(select(User))
-            all_users = all_users_result.scalars().all()
+            # # Получаем всех пользователей и админов
+            # all_users_result = await session.execute(select(User))
+            # all_users = all_users_result.scalars().all()
 
-            all_admins_result = await session.execute(select(Admin))
-            all_admins = all_admins_result.scalars().all()
+            # all_admins_result = await session.execute(select(Admin))
+            # all_admins = all_admins_result.scalars().all()
 
-            if not all_users or not all_admins:
-                print("❌ Нет пользователей или админов для создания обращений")
-                return
+            # if not all_users or not all_admins:
+            #     print("❌ Нет пользователей или админов для создания обращений")
+            #     return
 
-            support_appeals = []
-            user_messages = []
-            admin_messages = []
+            # support_appeals = []
+            # user_messages = []
+            # admin_messages = []
 
-            # Текущее время и даты для разных периодов
-            now = datetime.now()
-            today = now.date()
-            yesterday = today - timedelta(days=1)
-            last_week = today - timedelta(days=7)
+            # # Текущее время и даты для разных периодов
+            # now = datetime.now()
+            # today = now.date()
+            # yesterday = today - timedelta(days=1)
+            # last_week = today - timedelta(days=7)
 
-            priorities = ["low", "normal", "high", "critical"]
+            # priorities = ["low", "normal", "high", "critical"]
 
-            # Создаем 25 тестовых обращений с правильным распределением статусов
-            for i in range(25):
-                user = random.choice(all_users)
+            # # Создаем 25 тестовых обращений с правильным распределением статусов
+            # for i in range(25):
+            #     user = random.choice(all_users)
 
-                # Распределяем статусы:
-                # - 40% новых обращений (без назначенного админа)
-                # - 30% в работе (с назначенным админом)
-                # - 15% закрыто пользователем
-                # - 15% закрыто админом (с назначенным админом)
-                if i < 10:  # 40% - Новые обращения
-                    status = AppealStatus.NEW
-                    admin = None  # Без назначенного админа
-                    created_date = now - timedelta(hours=random.randint(1, 23))
-                elif i < 17:  # 28% - В работе
-                    status = AppealStatus.IN_WORK
-                    admin = random.choice(all_admins)  # С назначенным админом
-                    created_date = datetime.combine(yesterday, now.time()) - timedelta(
-                        hours=random.randint(1, 23)
-                    )
-                elif i < 21:  # 16% - Закрыто пользователем
-                    status = AppealStatus.CLOSED_BY_USER
-                    admin = (
-                        random.choice(all_admins) if random.random() > 0.5 else None
-                    )  # 50% с админом
-                    created_date = datetime.combine(last_week, now.time()) + timedelta(
-                        days=random.randint(0, 6)
-                    )
-                else:  # 16% - Закрыто админом
-                    status = AppealStatus.CLOSED_BY_ADMIN
-                    admin = random.choice(all_admins)  # Всегда с назначенным админом
-                    created_date = datetime.combine(last_week, now.time()) - timedelta(
-                        days=random.randint(8, 30)
-                    )
+            #     # Распределяем статусы:
+            #     # - 40% новых обращений (без назначенного админа)
+            #     # - 30% в работе (с назначенным админом)
+            #     # - 15% закрыто пользователем
+            #     # - 15% закрыто админом (с назначенным админом)
+            #     if i < 10:  # 40% - Новые обращения
+            #         status = AppealStatus.NEW
+            #         admin = None  # Без назначенного админа
+            #         created_date = now - timedelta(hours=random.randint(1, 23))
+            #     elif i < 17:  # 28% - В работе
+            #         status = AppealStatus.IN_WORK
+            #         admin = random.choice(all_admins)  # С назначенным админом
+            #         created_date = datetime.combine(yesterday, now.time()) - timedelta(
+            #             hours=random.randint(1, 23)
+            #         )
+            #     elif i < 21:  # 16% - Закрыто пользователем
+            #         status = AppealStatus.CLOSED_BY_USER
+            #         admin = (
+            #             random.choice(all_admins) if random.random() > 0.5 else None
+            #         )  # 50% с админом
+            #         created_date = datetime.combine(last_week, now.time()) + timedelta(
+            #             days=random.randint(0, 6)
+            #         )
+            #     else:  # 16% - Закрыто админом
+            #         status = AppealStatus.CLOSED_BY_ADMIN
+            #         admin = random.choice(all_admins)  # Всегда с назначенным админом
+            #         created_date = datetime.combine(last_week, now.time()) - timedelta(
+            #             days=random.randint(8, 30)
+            #         )
 
-                priority = random.choice(priorities)
+            #     priority = random.choice(priorities)
 
-                # Создаем обращение
-                appeal = SupportAppeal(
-                    telegram_id=user.telegram_id,
-                    created_date=created_date,
-                    updated_at=created_date,
-                    status=status,
-                    priority=priority,
-                    assigned_admin_id=admin.admin_id if admin else None,
-                )
-                support_appeals.append(appeal)
-                session.add(appeal)
+            # # Создаем обращение
+            # appeal = SupportAppeal(
+            #     telegram_id=user.telegram_id,
+            #     created_date=created_date,
+            #     updated_at=created_date,
+            #     status=status,
+            #     priority=priority,
+            #     assigned_admin_id=admin.admin_id if admin else None,
+            # )
+            # support_appeals.append(appeal)
+            # session.add(appeal)
 
-            await session.flush()  # Получаем ID для созданных обращений
+            # await session.flush()  # Получаем ID для созданных обращений
 
             # Создаем сообщения для обращений
-            for appeal in support_appeals:
-                # Сообщения от пользователя (1-3 сообщения)
-                user_msg_count = random.randint(1, 3)
-                for j in range(user_msg_count):
-                    user_message = UserMessage(
-                        telegram_id=appeal.telegram_id,
-                        message=f"Тестовое сообщение от пользователя #{j + 1}: {fake.paragraph(nb_sentences=2)}",
-                        created_date=appeal.created_date + timedelta(minutes=j * 10),
-                        appeal_id=appeal.appeal_id,
-                    )
-                    user_messages.append(user_message)
-                    session.add(user_message)
+            # for appeal in support_appeals:
+            #     # Сообщения от пользователя (1-3 сообщения)
+            #     user_msg_count = random.randint(1, 3)
+            #     for j in range(user_msg_count):
+            #         user_message = UserMessage(
+            #             telegram_id=appeal.telegram_id,
+            #             message=f"Тестовое сообщение от пользователя #{j + 1}: {fake.paragraph(nb_sentences=2)}",
+            #             created_date=appeal.created_date + timedelta(minutes=j * 10),
+            #             appeal_id=appeal.appeal_id,
+            #         )
+            #         user_messages.append(user_message)
+            #         session.add(user_message)
 
-                # Сообщения от админа (только для обращений с назначенным админом и не новых)
-                if appeal.assigned_admin_id and appeal.status != AppealStatus.NEW:
-                    admin_msg_count = random.randint(1, 2)
-                    for k in range(admin_msg_count):
-                        admin_message = AdminMessage(
-                            admin_id=appeal.assigned_admin_id,
-                            admin_message=f"Тестовый ответ админа #{k + 1}: {fake.paragraph(nb_sentences=2)}",
-                            appeal_id=appeal.appeal_id,
-                            created_date=appeal.created_date + timedelta(hours=1 + k),
-                        )
-                        admin_messages.append(admin_message)
-                        session.add(admin_message)
+            # Сообщения от админа (только для обращений с назначенным админом и не новых)
+            # if appeal.assigned_admin_id and appeal.status != AppealStatus.NEW:
+            #     admin_msg_count = random.randint(1, 2)
+            #     for k in range(admin_msg_count):
+            #         admin_message = AdminMessage(
+            #             admin_id=appeal.assigned_admin_id,
+            #             admin_message=f"Тестовый ответ админа #{k + 1}: {fake.paragraph(nb_sentences=2)}",
+            #             appeal_id=appeal.appeal_id,
+            #             created_date=appeal.created_date + timedelta(hours=1 + k),
+            #         )
+            #         admin_messages.append(admin_message)
+            #         session.add(admin_message)
 
-                # Обновляем updated_at для некоторых обращений
-                if random.random() > 0.7:
-                    appeal.updated_at = appeal.created_date + timedelta(
-                        hours=random.randint(1, 24)
-                    )
+            # # Обновляем updated_at для некоторых обращений
+            # if random.random() > 0.7:
+            #     appeal.updated_at = appeal.created_date + timedelta(
+            #         hours=random.randint(1, 24)
+            #     )
 
-            # Собираем статистику ДО коммита
-            new_count = len(
-                [a for a in support_appeals if a.status == AppealStatus.NEW]
-            )
-            in_work_count = len(
-                [a for a in support_appeals if a.status == AppealStatus.IN_WORK]
-            )
-            closed_by_user_count = len(
-                [a for a in support_appeals if a.status == AppealStatus.CLOSED_BY_USER]
-            )
-            closed_by_admin_count = len(
-                [a for a in support_appeals if a.status == AppealStatus.CLOSED_BY_ADMIN]
-            )
+            # # Собираем статистику ДО коммита
+            # new_count = len(
+            #     [a for a in support_appeals if a.status == AppealStatus.NEW]
+            # )
+            # in_work_count = len(
+            #     [a for a in support_appeals if a.status == AppealStatus.IN_WORK]
+            # )
+            # closed_by_user_count = len(
+            #     [a for a in support_appeals if a.status == AppealStatus.CLOSED_BY_USER]
+            # )
+            # closed_by_admin_count = len(
+            #     [a for a in support_appeals if a.status == AppealStatus.CLOSED_BY_ADMIN]
+            # )
 
-            # Статистика по назначениям
-            assigned_count = len(
-                [a for a in support_appeals if a.assigned_admin_id is not None]
-            )
-            unassigned_count = len(
-                [a for a in support_appeals if a.assigned_admin_id is None]
-            )
+            # # Статистика по назначениям
+            # assigned_count = len(
+            #     [a for a in support_appeals if a.assigned_admin_id is not None]
+            # )
+            # unassigned_count = len(
+            #     [a for a in support_appeals if a.assigned_admin_id is None]
+            # )
 
-            # Получаем временные метки
-            created_dates = [a.created_date for a in support_appeals]
-            oldest_appeal = min(created_dates) if created_dates else now
-            newest_appeal = max(created_dates) if created_dates else now
+            # # Получаем временные метки
+            # created_dates = [a.created_date for a in support_appeals]
+            # oldest_appeal = min(created_dates) if created_dates else now
+            # newest_appeal = max(created_dates) if created_dates else now
 
             await session.commit()
 
             # Выводим статистику
             print("✅ Тестовые данные успешно сгенерированы ✅")
-            print(f"""
-    📊 СТАТИСТИКА СОЗДАННЫХ ДАННЫХ:
 
-    📚 Основные данные:
-    • Пользователей: {len(all_users) + 1}  (+1 основной)
-    • Админов: {len(all_admins)}
-    • Книг: {len(books)}
-    • Авторов: {len(authors)}
-    • Отзывов: {len(reviews) + len(reviews2)}
+    #         print(f"""
+    # 📊 СТАТИСТИКА СОЗДАННЫХ ДАННЫХ:
 
-    📞 Данные поддержки:
-    • Обращений: {len(support_appeals)}
-    ├─ Новые (NEW): {new_count} (без назначения)
-    ├─ В работе (IN_WORK): {in_work_count} (с назначением)
-    ├─ Закрыто пользователями: {closed_by_user_count}
-    └─ Закрыто админами: {closed_by_admin_count} (с назначением)
+    # 📚 Основные данные:
+    # • Пользователей: {len(all_users) + 1}  (+1 основной)
+    # • Админов: {len(all_admins)}
+    # • Книг: {len(books)}
+    # • Авторов: {len(authors)}
+    # • Отзывов: {len(reviews) + len(reviews2)}
 
-    📋 Назначения:
-    • С назначенным админом: {assigned_count}
-    • Без назначения: {unassigned_count}
+    # 📞 Данные поддержки:
+    # • Обращений: {len(support_appeals)}
+    # ├─ Новые (NEW): {new_count} (без назначения)
+    # ├─ В работе (IN_WORK): {in_work_count} (с назначением)
+    # ├─ Закрыто пользователями: {closed_by_user_count}
+    # └─ Закрыто админами: {closed_by_admin_count} (с назначением)
 
-    💬 Сообщений:
-    • От пользователей: {len(user_messages)}
-    • От админов: {len(admin_messages)}
+    # 📋 Назначения:
+    # • С назначенным админом: {assigned_count}
+    # • Без назначения: {unassigned_count}
 
-    🕒 Временной диапазон обращений:
-    • Самое старое: {oldest_appeal.strftime("%d.%m.%Y %H:%M")}
-    • Самое новое: {newest_appeal.strftime("%d.%m.%Y %H:%M")}
+    # 💬 Сообщений:
+    # • От пользователей: {len(user_messages)}
+    # • От админов: {len(admin_messages)}
 
-    💡 Для тестирования:
-    • Новые обращения можно брать через "Взять новое обращение"
-    • Обращения в работе уже назначены на админов
-    • Закрытые обращения показывают историю работы
-            """)
+    # 🕒 Временной диапазон обращений:
+    # • Самое старое: {oldest_appeal.strftime("%d.%m.%Y %H:%M")}
+    # • Самое новое: {newest_appeal.strftime("%d.%m.%Y %H:%M")}
+
+    # 💡 Для тестирования:
+    # • Новые обращения можно брать через "Взять новое обращение"
+    # • Обращения в работе уже назначены на админов
+    # • Закрытые обращения показывают историю работы
+    #         """)
 
     @staticmethod
     async def clear_all_data():

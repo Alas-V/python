@@ -15,8 +15,11 @@ async def delete_messages(bot, chat_id: int, message_ids: list):
     for message_id in message_ids:
         try:
             await bot.delete_message(chat_id=chat_id, message_id=message_id)
+            await asyncio.sleep(0.1)
         except Exception as e:
-            if "message to delete not found" not in str(e):
+            if "message to delete not found" not in str(
+                e
+            ) and "message can't be deleted" not in str(e):
                 print(f"Ошибка удаления сообщения {message_id}: {e}")
 
 

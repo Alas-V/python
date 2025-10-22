@@ -21,8 +21,11 @@ async def delete_messages(bot, chat_id: int, message_ids: list):
     for message_id in message_ids:
         try:
             await bot.delete_message(chat_id=chat_id, message_id=message_id)
+            # await asyncio.sleep(0.1)
         except Exception as e:
-            if "message to delete not found" not in str(e):
+            if "message to delete not found" not in str(
+                e
+            ) and "message can't be deleted" not in str(e):
                 print(f"Ошибка удаления сообщения {message_id}: {e}")
 
 
@@ -89,40 +92,38 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
     appeal_id = int(callback.data.split("_")[2])
     status = await SupportQueries.check_appeal_status(appeal_id)
     appeal = await SupportQueries.get_appeal_full(appeal_id)
+    if not appeal:
+        await callback.answer("❌ Обращение не найдено", show_alert=True)
+        return
     message_parts, main_text = await text_appeal_split_messages(appeal)
     messages_to_delete = []
     await callback.message.delete()
-    if not message_parts:
-        main_message = await callback.message.answer(
-            text=main_text,
-            reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
-            parse_mode="Markdown",
-        )
-        messages_to_delete.append(main_message.message_id)
-    else:
+    if message_parts:
         for i, part in enumerate(message_parts):
             part_text = part
             if len(message_parts) > 1:
                 part_text = f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
             msg = await callback.message.answer(part_text, parse_mode="Markdown")
             messages_to_delete.append(msg.message_id)
-
-        main_message = await callback.message.answer(
-            text=main_text,
-            reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
-            parse_mode="Markdown",
-        )
-        messages_to_delete.append(main_message.message_id)
+    main_message = await callback.message.answer(
+        text=main_text,
+        reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
+        parse_mode="Markdown",
+    )
     has_user_msg = await SupportQueries.has_user_msg(appeal_id)
     if not has_user_msg:
         hint_message = await callback.message.answer(
             text="💌 Опишите ваш вопрос или проблему в сообщении ниже\nМы ответим в ближайшее время!"
         )
         messages_to_delete.append(hint_message.message_id)
+        last_hint_id = hint_message.message_id
+    else:
+        last_hint_id = None
     await state.update_data(
         appeal_id=appeal_id,
         messages_to_delete=messages_to_delete,
         main_message_id=main_message.message_id,
+        last_hint_id=last_hint_id,
     )
     await callback.answer()
     await state.set_state(SupportState.message_to_support)
@@ -165,9 +166,9 @@ async def message_to_support(message: Message, state: FSMContext):
     data = await state.get_data()
     telegram_id = int(message.from_user.id)
     appeal_id = data["appeal_id"]
-    main_message_id = data["main_message_id"]
+    old_messages_to_delete = data.get("messages_to_delete", [])
     last_hint_id = data.get("last_hint_id")
-    user_messages = data.get("user_messages", [])
+    old_main_message_id = data.get("main_message_id")
     no_message_cooldown = await SupportQueries.message_cooldown(telegram_id)
     if not no_message_cooldown:
         if last_hint_id:
@@ -188,34 +189,44 @@ async def message_to_support(message: Message, state: FSMContext):
         hint_message = await message.answer(text=text)
         await state.update_data(last_hint_id=hint_message.message_id)
         return
-    user_messages.append(message.message_id)
     if last_hint_id:
         try:
             await bot.delete_message(chat_id=message.chat.id, message_id=last_hint_id)
         except Exception:
             pass
-        user_messages.append(last_hint_id)
     await SupportQueries.new_user_message(
         telegram_id=telegram_id, appeal_id=appeal_id, message=message.text
     )
-    await delete_messages(bot, message.chat.id, user_messages)
+    all_messages_to_delete = old_messages_to_delete.copy()
+    if old_main_message_id:
+        all_messages_to_delete.append(old_main_message_id)
+    await delete_messages(bot, message.chat.id, all_messages_to_delete)
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception as e:
+        print(f"Не удалось удалить сообщение пользователя: {e}")
     appeal = await SupportQueries.get_appeal_full(appeal_id)
     status = await SupportQueries.check_appeal_status(appeal_id)
     message_parts, main_text = await text_appeal_split_messages(appeal)
-    try:
-        await bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=main_message_id,
-            text=main_text,
-            reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
-            parse_mode="Markdown",
-        )
-    except TelegramBadRequest:
-        pass
+    new_messages_to_delete = []
+    if message_parts:
+        for i, part in enumerate(message_parts):
+            part_text = part
+            if len(message_parts) > 1:
+                part_text = f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
+            msg = await message.answer(part_text, parse_mode="Markdown")
+            new_messages_to_delete.append(msg.message_id)
+    main_message = await message.answer(
+        text=main_text,
+        reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
+        parse_mode="Markdown",
+    )
     confirmation = await message.answer("✅ Сообщение отправлено!")
-    await asyncio.sleep(1)
+    await asyncio.sleep(2)
     await confirmation.delete()
     await state.update_data(
-        user_messages=[],
+        messages_to_delete=new_messages_to_delete,
+        main_message_id=main_message.message_id,
         last_hint_id=None,
+        user_messages=[],
     )
