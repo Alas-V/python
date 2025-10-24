@@ -271,13 +271,8 @@ async def admin_appeal_split_messages(
 📞 TG ID: `{appeal.telegram_id}`
 📅 Создано: {appeal.created_date.strftime("%d.%m.%Y %H:%M")}
 """
-    if appeal.assigned_admin_id:
-        admin_info = "👨‍💻 Назначено: "
-        if appeal.assigned_admin:
-            admin_info += appeal.assigned_admin.name
-        else:
-            admin_info += "Администратор"
-        main_text += f"{admin_info}\n"
+    admin_info = "Администратор"
+    main_text += f"{admin_info}\n"
     if not appeal.user_messages and not appeal.admin_messages:
         return [], main_text + "\n\n📭 *Пока нет сообщений*"
     all_messages = []

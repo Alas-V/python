@@ -71,7 +71,9 @@ async def new_appeal(callback: CallbackQuery, state: FSMContext):
     main_message = await callback.message.edit_text(
         text=main_text,
         parse_mode="Markdown",
-        reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
+        reply_markup=await SupportKeyboards.kb_in_appeal(
+            appeal_id, status, no_msg=True
+        ),
     )
     await callback.answer(text=hint_text, show_alert=True)
     hint_message = await callback.message.answer(
@@ -105,19 +107,27 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
                 part_text = f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
             msg = await callback.message.answer(part_text, parse_mode="Markdown")
             messages_to_delete.append(msg.message_id)
-    main_message = await callback.message.answer(
-        text=main_text,
-        reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
-        parse_mode="Markdown",
-    )
     has_user_msg = await SupportQueries.has_user_msg(appeal_id)
     if not has_user_msg:
+        main_message = await callback.message.answer(
+            text=main_text,
+            reply_markup=await SupportKeyboards.kb_in_appeal(
+                appeal_id, status, no_msg=True
+            ),
+            parse_mode="Markdown",
+        )
         hint_message = await callback.message.answer(
             text="💌 Опишите ваш вопрос или проблему в сообщении ниже\nМы ответим в ближайшее время!"
         )
         messages_to_delete.append(hint_message.message_id)
         last_hint_id = hint_message.message_id
+        await state.set_state(SupportState.message_to_support)
     else:
+        main_message = await callback.message.answer(
+            text=main_text,
+            reply_markup=await SupportKeyboards.kb_in_appeal(appeal_id, status),
+            parse_mode="Markdown",
+        )
         last_hint_id = None
     await state.update_data(
         appeal_id=appeal_id,
@@ -126,7 +136,6 @@ async def open_appeal(callback: CallbackQuery, state: FSMContext):
         last_hint_id=last_hint_id,
     )
     await callback.answer()
-    await state.set_state(SupportState.message_to_support)
 
 
 @support_router.callback_query(F.data.startswith("close_appeal_"))
@@ -156,10 +165,43 @@ async def appeal_sure_close(callback: CallbackQuery):
 @support_router.callback_query(F.data.startswith("new_message_to_support_"))
 async def new_msg_to_support(callback: CallbackQuery, state: FSMContext):
     appeal_id = int(callback.data.split("_")[4])
-    pass
+    messages_to_delete = []
+    status = await SupportQueries.check_appeal_status(appeal_id)
+    appeal = await SupportQueries.get_appeal_full(appeal_id)
+    if not appeal:
+        await callback.answer("❌ Обращение не найдено", show_alert=True)
+        return
+    message_parts, main_text = await text_appeal_split_messages(appeal)
+    if message_parts:
+        for i, part in enumerate(message_parts):
+            part_text = part
+            if len(message_parts) > 1:
+                part_text = f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
+            msg = await callback.message.answer(part_text, parse_mode="Markdown")
+            messages_to_delete.append(msg.message_id)
+    main_message = await callback.message.edit_text(
+        text=main_text,
+        reply_markup=await SupportKeyboards.kb_in_appeal(
+            appeal_id, status, no_msg=True
+        ),
+        parse_mode="Markdown",
+    )
+    hint_message = await callback.message.answer(
+        text="💌 Опишите ваш вопрос или проблему в сообщении ниже\nМы ответим в ближайшее время!"
+    )
+    messages_to_delete.append(hint_message.message_id)
+    last_hint_id = hint_message.message_id
+    await state.set_state(SupportState.message_to_support)
+    await state.update_data(
+        appeal_id=appeal_id,
+        messages_to_delete=messages_to_delete,
+        main_message_id=main_message.message_id,
+        last_hint_id=last_hint_id,
+    )
+    await callback.answer()
 
 
-# FMScontext hnd
+# FMScontext hnd``
 @support_router.message(SupportState.message_to_support)
 async def message_to_support(message: Message, state: FSMContext):
     bot = message.bot
@@ -222,7 +264,7 @@ async def message_to_support(message: Message, state: FSMContext):
         parse_mode="Markdown",
     )
     confirmation = await message.answer("✅ Сообщение отправлено!")
-    await asyncio.sleep(2)
+    await asyncio.sleep(1)
     await confirmation.delete()
     await state.update_data(
         messages_to_delete=new_messages_to_delete,

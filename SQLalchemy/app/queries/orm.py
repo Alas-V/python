@@ -319,7 +319,6 @@ class SaleQueries:
                 .order_by(Book.sale_value.desc())
             )
             return result.mappings().all()
-            # returning dict
 
 
 class UserQueries:
@@ -653,7 +652,7 @@ class SupportQueries:
             last_message = result.scalar_one_or_none()
             if not last_message:
                 return True
-            return True  # для дебага , убирает cooldown для пользовательских сообщений
+            return True  # DEBUG для дебага , убирает cooldown для пользовательских сообщений
             # time_passed = datetime.utcnow() - last_message
             # return time_passed.total_seconds() >= 120
 
@@ -716,6 +715,11 @@ class SupportQueries:
                 telegram_id=telegram_id, message=message, appeal_id=appeal_id
             )
             session.add(new_message)
+            await session.execute(
+                update(SupportAppeal)
+                .where(SupportAppeal.appeal_id == appeal_id)
+                .values(admin_visit=False)
+            )
             await session.commit()
 
     @staticmethod
@@ -1106,6 +1110,16 @@ class OrderQueries:
 
 class AdminQueries:
     @staticmethod
+    async def admin_visited(appeal_id: int):
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(SupportAppeal)
+                .where(SupportAppeal.appeal_id == appeal_id)
+                .values(admin_visit=True)
+            )
+            await session.commit()
+
+    @staticmethod
     async def get_admin_by_telegram_id(telegram_id: int):
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -1113,6 +1127,14 @@ class AdminQueries:
             )
             admin = result.scalar_one_or_none()
             return admin
+
+    @staticmethod
+    async def get_admin_by_id(admin_id: int):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Admin).where(Admin.admin_id == admin_id)
+            )
+            return result.scalar_one_or_none()
 
     @staticmethod
     async def is_user_admin(telegram_id: int) -> bool:
@@ -1131,6 +1153,39 @@ class AdminQueries:
             )
             admin = result.scalar_one_or_none()
             return admin.name if admin else "Администратор"
+
+    # @staticmethod
+    # async def admin_appeal_in_work_count(admin_id: int):
+    #     async with AsyncSessionLocal() as session:
+    #         result = await session.execute(
+    #             select(func.count()).where(
+    #                 and_(
+    #                     SupportAppeal.assigned_admin_id == admin_id,
+    #                     SupportAppeal.status == AppealStatus.IN_WORK,
+    #                 )
+    #             )
+    #         )
+    #         all_appeals_in_work = result.scalar()
+    #         return all_appeals_in_work
+
+    @staticmethod
+    async def appeal_in_work_for_kb(admin_id: int):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    SupportAppeal.appeal_id, SupportAppeal.admin_visit, User.username
+                )
+                .where(
+                    and_(
+                        SupportAppeal.assigned_admin_id == admin_id,
+                        SupportAppeal.status == AppealStatus.IN_WORK,
+                    )
+                )
+                .join(User, User.telegram_id == SupportAppeal.telegram_id)
+                .order_by(SupportAppeal.admin_visit)
+            )
+            appeals_data = result.mappings().all()
+            return appeals_data
 
     @staticmethod
     async def get_admin_support_statistics(telegram_id: int) -> dict:
@@ -1236,16 +1291,18 @@ class AdminQueries:
     @staticmethod
     async def get_admin_appeal_by_id(appeal_id: int):
         async with AsyncSessionLocal() as session:
-            appeal = await session.execute(
+            result = await session.execute(
                 select(SupportAppeal)
                 .options(
                     selectinload(SupportAppeal.user_messages),
-                    selectinload(SupportAppeal.admin_messages),
+                    selectinload(SupportAppeal.admin_messages).selectinload(
+                        AdminMessage.admin
+                    ),
                     selectinload(SupportAppeal.user),
                 )
                 .where(SupportAppeal.appeal_id == appeal_id)
             )
-            appeal_data = appeal.scalar_one_or_none()
+            appeal_data = result.scalar_one_or_none()
             return appeal_data
 
     @staticmethod

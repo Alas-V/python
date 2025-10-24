@@ -198,7 +198,7 @@ class Admin(Base):
         Integer, default=AdminPermission.MODERATOR_PERMS
     )
     role_name: Mapped[str] = mapped_column(String(20), default="moderator")
-    total_message_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    # total_message_count: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
     messages: Mapped[List["AdminMessage"]] = relationship(back_populates="admin")
@@ -317,3 +317,4 @@ class SupportAppeal(Base):
     priority: Mapped[str] = mapped_column(
         String(10), server_default=PriorityStatus.NORMAL
     )
+    admin_visit: Mapped[bool] = mapped_column(Boolean, server_default=text("FALSE"))

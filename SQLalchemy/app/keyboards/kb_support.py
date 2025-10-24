@@ -59,18 +59,21 @@ class SupportKeyboards:
         return builder.as_markup()
 
     @staticmethod
-    async def kb_in_appeal(appeal_id: id, status: str) -> InlineKeyboardMarkup:
+    async def kb_in_appeal(
+        appeal_id: id, status: str, no_msg: bool = False
+    ) -> InlineKeyboardMarkup:
         keyboard = []
         if status == "in_work" or status == "new":
-            keyboard.insert(
-                0,
-                [
-                    InlineKeyboardButton(
-                        text="✏️ Написать сообщение администратору",
-                        callback_data=f"new_message_to_support_{appeal_id}",
-                    )
-                ],
-            )
+            if not no_msg:
+                keyboard.insert(
+                    0,
+                    [
+                        InlineKeyboardButton(
+                            text="✏️ Написать сообщение администратору",
+                            callback_data=f"new_message_to_support_{appeal_id}",
+                        )
+                    ],
+                )
             keyboard.append(
                 [
                     InlineKeyboardButton(

@@ -1,4 +1,4 @@
-from aiogram import Router, F
+from aiogram import Bot, Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -67,6 +67,7 @@ async def admin_menu(
 async def my_support_statistics(
     callback: CallbackQuery,
     state: FSMContext,
+    bot: Bot,
     is_admin: bool,
     admin_permissions: int,
     admin_name: str,
@@ -74,6 +75,7 @@ async def my_support_statistics(
     data = await state.get_data()
     messages_to_delete = data.get("messages_to_delete", [])
     last_hint_id = data.get("last_hint_id")
+    main_message = data.get("main_message")
     if messages_to_delete:
         await delete_messages(
             callback.bot, callback.message.chat.id, messages_to_delete
@@ -93,8 +95,84 @@ async def my_support_statistics(
         await callback.answer("❌ Ошибка получения статистики", show_alert=True)
         return
     text = await admin_personal_support_statistic(statistic_data)
+    if main_message:
+        await bot.edit_message_text(
+            chat_id=callback.message.chat.id,
+            message_id=main_message,
+            text=text,
+            reply_markup=await KbAdmin.support_main_keyboard(),
+        )
+        await callback.answer()
+        return
     await callback.message.edit_text(
         text, reply_markup=await KbAdmin.support_main_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "support_my_active")
+@admin_required
+async def active_supports(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    admin_tg_id = int(callback.from_user.id)
+    admin = await AdminQueries.get_admin_by_telegram_id(admin_tg_id)
+    appeals_in_work = await AdminQueries.appeal_in_work_for_kb(admin_id=admin.admin_id)
+    if not appeals_in_work:
+        await callback.answer("У вас сейчас нет активных обращений в поддержку")
+        return
+    main_message = await callback.message.edit_text(
+        text="Выберите одно из Ваших активных обращений в поддержку:",
+        reply_markup=await KbAdmin.kb_my_active_appeals(appeals_in_work),
+    )
+    await state.update_data(
+        main_message_id=main_message.message_id,
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin_open_appeal_"))
+@admin_required
+async def admin_open_appeal(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    appeal_id = int(callback.data.split("_")[3])
+    appeal = await AdminQueries.get_admin_appeal_by_id(appeal_id)
+    await AdminQueries.admin_visited(appeal_id)
+    message_parts, main_text = await admin_appeal_split_messages(appeal, admin_name)
+    messages_to_delete = []
+    await callback.message.delete()
+    if not message_parts:
+        main_message = await callback.message.answer(
+            text=main_text,
+            reply_markup=await KbAdmin.support_appeal_actions_keyboard(appeal_id),
+            parse_mode="Markdown",
+        )
+        messages_to_delete.append(main_message.message_id)
+    else:
+        for i, part in enumerate(message_parts):
+            part_text = part
+            if len(message_parts) > 1:
+                part_text = f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
+            msg = await callback.message.answer(part_text, parse_mode="Markdown")
+            messages_to_delete.append(msg.message_id)
+        main_message = await callback.message.answer(
+            text=main_text,
+            reply_markup=await KbAdmin.support_appeal_actions_keyboard(appeal_id),
+            parse_mode="Markdown",
+        )
+    await state.update_data(
+        messages_to_delete=messages_to_delete,
+        main_message_id=main_message.message_id,
+        current_step="in_appeal",
     )
 
 
@@ -135,6 +213,7 @@ async def support_take_new(
     await AdminQueries.assign_appeal_to_admin(
         int(new_appeal.appeal_id), int(callback.from_user.id)
     )
+    await AdminQueries.admin_visited(new_appeal.appeal_id)
     message_parts, main_text = await admin_appeal_split_messages(new_appeal, admin_name)
     messages_to_delete = []
     await callback.message.delete()
@@ -196,8 +275,9 @@ async def admin_reply(
             text=f"Вы не можете отправить новое сообщение, так как обращение уже было закрыто {dict_for_text[appeal_status]} ",
             show_alert=True,
         )
+        await callback.answer()
         return
-    await callback.answer()
+
     hint_message = await callback.message.answer(
         text="📝 Отправьте сообщение ниже, чтобы ответить пользователю"
     )
@@ -240,10 +320,6 @@ async def message_from_support(
             await bot.delete_message(chat_id=message.chat.id, message_id=last_hint_id)
         except Exception as e:
             print(f"Не удалось удалить подсказку: {e}")
-    if not message.text.strip():
-        hint_message = await message.answer("❌ Сообщение не может быть пустым")
-        await state.update_data(last_hint_id=hint_message.message_id)
-        return
     admin = await AdminQueries.get_admin_by_telegram_id(message.from_user.id)
     if not admin:
         await message.answer("❌ Администратор не найден")
@@ -296,3 +372,4 @@ async def message_from_support(
         messages_to_delete=new_messages_to_delete,
         main_message_id=main_message.message_id,
     )
+    # await state.clear()

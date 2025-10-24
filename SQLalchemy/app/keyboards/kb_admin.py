@@ -114,6 +114,30 @@ class KbAdmin:
         )
 
     @staticmethod
+    async def kb_my_active_appeals(appeal_data) -> InlineKeyboardMarkup:
+        keyboard = []
+        for appeal in appeal_data:
+            username = appeal.get("username") or ""
+            admin_visit = appeal.get("admin_visit")
+            appeal_id = appeal.get("appeal_id")
+            if admin_visit:
+                new_msg = ""
+            else:
+                new_msg = "💬 Новое сообщение"
+            button_text = f"{username} {new_msg}"
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=button_text, callback_data=f"admin_open_appeal_{appeal_id}"
+                    )
+                ]
+            )
+        keyboard.append(
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_main_support")]
+        )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
     async def support_appeal_actions_keyboard(appeal_id: int) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
@@ -131,7 +155,7 @@ class KbAdmin:
                 ],
                 [
                     InlineKeyboardButton(
-                        text="◀️ Назад в поддержку", callback_data="admin_main_support"
+                        text="🔙 Назад в поддержку", callback_data="admin_main_support"
                     )
                 ],
             ]
