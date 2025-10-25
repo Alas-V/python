@@ -201,7 +201,7 @@ async def new_msg_to_support(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# FMScontext hnd``
+# FMScontext hnd
 @support_router.message(SupportState.message_to_support)
 async def message_to_support(message: Message, state: FSMContext):
     bot = message.bot

@@ -619,8 +619,9 @@ class SupportQueries:
             last_appeal = result.scalar_one_or_none()
             if not last_appeal:
                 return True
-            time_passed = datetime.utcnow() - last_appeal
-            return time_passed.total_seconds() >= 3600
+            return True  # DEBUG  no cooldown at all
+            # time_passed = datetime.utcnow() - last_appeal
+            # return time_passed.total_seconds() >= 3600
 
     @staticmethod
     async def get_cooldown_minutes(telegram_id: int) -> int:
@@ -1135,6 +1136,69 @@ class AdminQueries:
                 select(Admin).where(Admin.admin_id == admin_id)
             )
             return result.scalar_one_or_none()
+
+    @staticmethod
+    async def has_closed_appeals(admin_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            exists_query = (
+                select(1)
+                .where(
+                    SupportAppeal.assigned_admin_id == admin_id,
+                    SupportAppeal.status.in_(
+                        [AppealStatus.CLOSED_BY_ADMIN, AppealStatus.CLOSED_BY_USER]
+                    ),
+                )
+                .exists()
+            )
+            result = await session.execute(select(exists_query))
+            return result.scalar()
+
+    @staticmethod
+    async def count_appeals_in_work(admin_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(func.count(SupportAppeal.appeal_id)).where(
+                    and_(
+                        SupportAppeal.status == AppealStatus.IN_WORK,
+                        SupportAppeal.assigned_admin_id == admin_id,
+                    )
+                )
+            )
+            return result.scalar()
+
+    @staticmethod
+    async def get_closed_appeals(
+        admin_id: int, page: int = 0, items_per_page: int = 10
+    ) -> tuple[list, int]:
+        async with AsyncSessionLocal() as session:
+            total_count = await session.execute(
+                select(func.count(SupportAppeal.appeal_id)).where(
+                    SupportAppeal.assigned_admin_id == admin_id,
+                    SupportAppeal.status.in_(
+                        [AppealStatus.CLOSED_BY_ADMIN, AppealStatus.CLOSED_BY_USER]
+                    ),
+                )
+            )
+            total_count = total_count.scalar()
+            result = await session.execute(
+                select(
+                    SupportAppeal.appeal_id,
+                    SupportAppeal.updated_at,
+                    SupportAppeal.status,
+                    User.username,
+                )
+                .where(
+                    SupportAppeal.assigned_admin_id == admin_id,
+                    SupportAppeal.status.in_(
+                        [AppealStatus.CLOSED_BY_ADMIN, AppealStatus.CLOSED_BY_USER]
+                    ),
+                )
+                .join(User, User.telegram_id == SupportAppeal.telegram_id)
+                .order_by(SupportAppeal.updated_at.desc())
+                .offset(page * items_per_page)
+                .limit(items_per_page)
+            )
+            return result.mappings().all(), total_count
 
     @staticmethod
     async def is_user_admin(telegram_id: int) -> bool:

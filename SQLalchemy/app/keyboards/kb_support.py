@@ -23,6 +23,7 @@ class SupportKeyboards:
             status_emoji = get_status_emoji(status)
             button_text = f"📅 {created_date.strftime('%d.%m')} | {status_emoji}"
             builder.button(text=button_text, callback_data=f"open_appeal_{appeal_id}")
+            builder.adjust(1)
         if total_count > 5:
             pagination_buttons = []
             total_pages = (total_count + 4) // 5

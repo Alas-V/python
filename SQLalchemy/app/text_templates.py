@@ -403,7 +403,7 @@ async def admin_personal_support_statistic(statistic_data: dict) -> str:
 {priority_text}
 {overdue_msg}
 🎯 ВАША РАБОТА:
-• В работе: {admin_active_appeals}
+• В работе: {admin_active_appeals} / 10 
 • Закрытые вами: {admin_closed_appeals}
 • Ответов сегодня: {admin_responses_today}
 
