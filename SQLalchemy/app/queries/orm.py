@@ -693,7 +693,7 @@ class SupportQueries:
             result = await session.execute(
                 select(SupportAppeal.status).where(SupportAppeal.appeal_id == appeal_id)
             )
-            status = result.scalar_one()
+            status = result.scalar_one_or_none()
             return status
 
     @staticmethod
@@ -1404,6 +1404,32 @@ class AdminQueries:
             session.add(admin_msg)
             await session.commit()
             return True
+
+    @staticmethod
+    async def appeal_exists(appeal_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(SupportAppeal.appeal_id).where(
+                    SupportAppeal.appeal_id == appeal_id
+                )
+            )
+            return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    async def is_assigned_admin(appeal_id: int, admin_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            appeal = await session.execute(
+                select(SupportAppeal.appeal_id)
+                .where(
+                    and_(
+                        SupportAppeal.appeal_id == appeal_id,
+                        SupportAppeal.assigned_admin_id == admin_id,
+                    )
+                )
+                .limit(1)
+            )
+            is_assigned = appeal.scalar_one_or_none()
+            return is_assigned is not None
 
 
 class DBData:

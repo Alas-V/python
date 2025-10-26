@@ -14,9 +14,11 @@ from text_templates import (
     admin_message_rules,
 )
 from utils.states import AdminSupportState
-from models import AppealStatus
+from models import AppealStatus, AdminPermission
 import asyncio
 from aiogram.exceptions import TelegramBadRequest
+from utils.admin_utils import PermissionChecker
+
 
 admin_router = Router()
 admin_router.callback_query.middleware(AdminMiddleware())
@@ -33,6 +35,7 @@ async def delete_messages(bot, chat_id: int, message_ids: list):
                 e
             ) and "message can't be deleted" not in str(e):
                 print(f"Ошибка удаления сообщения {message_id}: {e}")
+            continue
 
 
 def admin_required(handler):
@@ -84,13 +87,35 @@ async def appeal_sure_close(
     admin_permissions: int,
     admin_name: str,
 ):
+    data = await state.get_data()
+    messages_to_delete = data.get("messages_to_delete", [])
+    last_hint_id = data.get("last_hint_id")
+    main_message_id = data.get("main_message_id")
+    all_messages_to_delete = messages_to_delete.copy()
+    if main_message_id and main_message_id not in all_messages_to_delete:
+        all_messages_to_delete.append(main_message_id)
+    if all_messages_to_delete:
+        await delete_messages(
+            callback.bot, callback.message.chat.id, all_messages_to_delete
+        )
+    if last_hint_id:
+        try:
+            await callback.bot.delete_message(
+                chat_id=callback.message.chat.id, message_id=last_hint_id
+            )
+        except Exception:
+            pass
+    await state.clear()
     appeal_id = int(callback.data.split("_")[4])
     await SupportQueries.close_appeal(appeal_id, who_close="admin")
     status = await SupportQueries.check_appeal_status(appeal_id)
     appeal = await AdminQueries.get_admin_appeal_by_id(appeal_id)
     message_parts, main_text = await admin_appeal_split_messages(appeal, admin_name)
-    messages_to_delete = []
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    new_messages_to_delete = []
     if not message_parts:
         main_message = await callback.message.answer(
             text=main_text,
@@ -99,14 +124,14 @@ async def appeal_sure_close(
             ),
             parse_mode="Markdown",
         )
-        messages_to_delete.append(main_message.message_id)
+        new_messages_to_delete.append(main_message.message_id)
     else:
         for i, part in enumerate(message_parts):
             part_text = part
             if len(message_parts) > 1:
                 part_text = f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
             msg = await callback.message.answer(part_text, parse_mode="Markdown")
-            messages_to_delete.append(msg.message_id)
+            new_messages_to_delete.append(msg.message_id)
         main_message = await callback.message.answer(
             text=main_text,
             reply_markup=await KbAdmin.support_appeal_actions_keyboard(
@@ -114,8 +139,9 @@ async def appeal_sure_close(
             ),
             parse_mode="Markdown",
         )
+        new_messages_to_delete.append(main_message.message_id)
     await state.update_data(
-        messages_to_delete=messages_to_delete,
+        messages_to_delete=new_messages_to_delete,
         main_message_id=main_message.message_id,
         current_step="in_appeal",
     )
@@ -172,11 +198,9 @@ async def my_support_statistics(
             text, reply_markup=await KbAdmin.support_main_keyboard()
         )
     except TelegramBadRequest:
-        # Если и это сообщение недоступно, отправляем новое
         await callback.message.answer(
             text, reply_markup=await KbAdmin.support_main_keyboard()
         )
-
     await callback.answer()
 
 
@@ -217,13 +241,16 @@ async def admin_open_appeal(
     appeal_id = int(callback.data.split("_")[3])
     appeal = await AdminQueries.get_admin_appeal_by_id(appeal_id)
     await AdminQueries.admin_visited(appeal_id)
+    status = await SupportQueries.check_appeal_status(appeal_id)
     message_parts, main_text = await admin_appeal_split_messages(appeal, admin_name)
     messages_to_delete = []
     await callback.message.delete()
     if not message_parts:
         main_message = await callback.message.answer(
             text=main_text,
-            reply_markup=await KbAdmin.support_appeal_actions_keyboard(appeal_id),
+            reply_markup=await KbAdmin.support_appeal_actions_keyboard(
+                appeal_id, status
+            ),
             parse_mode="Markdown",
         )
         messages_to_delete.append(main_message.message_id)
@@ -236,7 +263,9 @@ async def admin_open_appeal(
             messages_to_delete.append(msg.message_id)
         main_message = await callback.message.answer(
             text=main_text,
-            reply_markup=await KbAdmin.support_appeal_actions_keyboard(appeal_id),
+            reply_markup=await KbAdmin.support_appeal_actions_keyboard(
+                appeal_id, status
+            ),
             parse_mode="Markdown",
         )
     await state.update_data(
@@ -292,6 +321,7 @@ async def support_take_new(
         int(new_appeal.appeal_id), int(callback.from_user.id)
     )
     await AdminQueries.admin_visited(new_appeal.appeal_id)
+    status = await SupportQueries.check_appeal_status(new_appeal.appeal_id)
     message_parts, main_text = await admin_appeal_split_messages(new_appeal, admin_name)
     messages_to_delete = []
     await callback.message.delete()
@@ -299,7 +329,7 @@ async def support_take_new(
         main_message = await callback.message.answer(
             text=main_text,
             reply_markup=await KbAdmin.support_appeal_actions_keyboard(
-                new_appeal.appeal_id
+                new_appeal.appeal_id, status
             ),
             parse_mode="Markdown",
         )
@@ -314,7 +344,7 @@ async def support_take_new(
         main_message = await callback.message.answer(
             text=main_text,
             reply_markup=await KbAdmin.support_appeal_actions_keyboard(
-                new_appeal.appeal_id
+                new_appeal.appeal_id, status
             ),
             parse_mode="Markdown",
         )
@@ -403,7 +433,7 @@ async def admin_last_appeals(
     appeals_data, total_count = await AdminQueries.get_closed_appeals(admin.admin_id)
     await callback.message.edit_text(
         text=f"Ваши закрытые обращения. Всего у вас {total_count} закрытых обращений ",
-        reply_markup=KbAdmin.universal_appeals_keyboard(
+        reply_markup=await KbAdmin.universal_appeals_keyboard(
             appeals_data=appeals_data, total_count=total_count
         ),
     )
@@ -430,6 +460,60 @@ async def admin_all_closed_appeals_pagination(
             appeals_data=appeals_data, page=page, total_count=total_count
         ),
     )
+
+
+@admin_router.callback_query(F.data == "admin_closed_find_by_appeal_id")
+@admin_required
+async def admin_closed_find_by_appeal_id(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    telegram_id = int(callback.from_user.id)
+    admin = await AdminQueries.get_admin_by_telegram_id(telegram_id)
+    has_closed_appeals = await AdminQueries.has_closed_appeals(admin.admin_id)
+    if not has_closed_appeals:
+        has_admin_permission = PermissionChecker.has_permission(
+            admin_permissions, AdminPermission.MANAGE_ADMINS
+        )
+        if not has_admin_permission:
+            callback.answer(text="У вас нет закрытых обращений", show_alert=True)
+            return
+    main_message = await callback.message.edit_text(
+        text="Напишите номер обращения: ",
+        reply_markup=await KbAdmin.go_back_to_find_filters(),
+    )
+    await state.set_state(AdminSupportState.sending_appeal_id_for_find)
+    await state.update_data(main_message_id=main_message.message_id)
+
+
+@admin_router.callback_query(F.data == "admin_find_by_username")
+@admin_required
+async def admin_find_by_username(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    telegram_id = int(callback.from_user.id)
+    admin = await AdminQueries.get_admin_by_telegram_id(telegram_id)
+    has_closed_appeals = await AdminQueries.has_closed_appeals(admin.admin_id)
+    if not has_closed_appeals:
+        has_admin_permission = PermissionChecker.has_permission(
+            admin_permissions, AdminPermission.MANAGE_ADMINS
+        )
+        if not has_admin_permission:
+            callback.answer(text="У вас нет закрытых обращений", show_alert=True)
+            return
+    main_message = await callback.message.edit_text(
+        text="Напишите username пользователя для просмотра его обращений: @...",
+        reply_markup=await KbAdmin.go_back_to_find_filters(),
+    )
+    await state.set_state(AdminSupportState.sending_username_for_find)
+    await state.update_data(main_message_id=main_message.message_id)
 
 
 # admin_main_stats
@@ -489,6 +573,7 @@ async def message_from_support(
         except Exception as e:
             print(f"Не удалось удалить сообщение {msg_id}: {e}")
     updated_appeal = await AdminQueries.get_admin_appeal_by_id(appeal_id)
+    status = await SupportQueries.check_appeal_status(appeal_id)
     if not updated_appeal:
         await message.answer("❌ Обращение не найдено")
         await state.clear()
@@ -506,7 +591,7 @@ async def message_from_support(
             new_messages_to_delete.append(msg.message_id)
     main_message = await message.answer(
         text=main_text,
-        reply_markup=await KbAdmin.support_appeal_actions_keyboard(appeal_id),
+        reply_markup=await KbAdmin.support_appeal_actions_keyboard(appeal_id, status),
         parse_mode="Markdown",
     )
     hint_message = await message.answer("✅ Ваше сообщение отправлено пользователю")
@@ -517,3 +602,114 @@ async def message_from_support(
     )
     await asyncio.sleep(1)
     await hint_message.delete()
+
+
+@admin_router.message(AdminSupportState.sending_appeal_id_for_find, F.text)
+@admin_required
+async def appeal_id_to_find(
+    message: Message,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    bot = message.bot
+    data = await state.get_data()
+    old_main_message_id = data.get("main_message_id")
+    old_hint = data.get("last_hint_id", [])
+    if old_hint:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=old_hint)
+        except Exception as e:
+            print(f"Не удалось удалить старое сообщение: {e}")
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение пользователя: {e}")
+    try:
+        appeal_id = int(message.text)
+    except ValueError:
+        hint_message = await message.answer(
+            text="❌ Номер обращения должен быть числом. Попробуйте еще раз:"
+        )
+        await state.update_data(last_hint_id=hint_message.message_id)
+        return
+    telegram_id = int(message.from_user.id)
+    admin = await AdminQueries.get_admin_by_telegram_id(telegram_id)
+    if not await AdminQueries.appeal_exists(appeal_id):
+        hint_message = await message.answer(
+            text=f"❌ Обращение с номером {appeal_id} не найдено."
+        )
+        await state.update_data(last_hint_id=hint_message.message_id)
+        return
+    has_admin_permission = PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    )
+    if has_admin_permission:
+        can_open = True
+    else:
+        can_open = await AdminQueries.is_assigned_admin(appeal_id, admin.admin_id)
+    if old_main_message_id:
+        try:
+            await bot.delete_message(
+                chat_id=message.chat.id, message_id=old_main_message_id
+            )
+        except Exception as e:
+            print(f"Не удалось удалить старое сообщение: {e}")
+    if can_open:
+        appeal = await AdminQueries.get_admin_appeal_by_id(appeal_id)
+        if not appeal:
+            error_message = await message.answer(
+                text="❌ Обращение не найдено",
+                reply_markup=await KbAdmin.go_back_to_find_filters(),
+            )
+            await state.update_data(
+                messages_to_delete=[error_message.message_id],
+                main_message_id=error_message.message_id,
+            )
+            return
+        await AdminQueries.admin_visited(appeal_id)
+        status = await SupportQueries.check_appeal_status(appeal_id)
+        message_parts, main_text = await admin_appeal_split_messages(appeal, admin_name)
+        messages_to_delete = []
+        if not message_parts:
+            main_message = await message.answer(
+                text=main_text,
+                reply_markup=await KbAdmin.support_appeal_actions_keyboard(
+                    appeal_id, status
+                ),
+                parse_mode="Markdown",
+            )
+            messages_to_delete.append(main_message.message_id)
+        else:
+            for i, part in enumerate(message_parts):
+                part_text = part
+                if len(message_parts) > 1:
+                    part_text = (
+                        f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
+                    )
+                msg = await message.answer(part_text, parse_mode="Markdown")
+                messages_to_delete.append(msg.message_id)
+            main_message = await message.answer(
+                text=main_text,
+                reply_markup=await KbAdmin.support_appeal_actions_keyboard(
+                    appeal_id, status
+                ),
+                parse_mode="Markdown",
+            )
+            messages_to_delete.append(main_message.message_id)
+        await state.update_data(
+            messages_to_delete=messages_to_delete,
+            main_message_id=main_message.message_id,
+            appeal_id=appeal_id,
+            current_step="in_appeal",
+        )
+    else:
+        main_message = await message.answer(
+            text=f"❌ У вас недостаточно прав для открытия обращения №{appeal_id}.\n\nНа него был назначен другой администратор",
+            reply_markup=await KbAdmin.go_back_to_find_filters(),
+        )
+        await state.update_data(
+            messages_to_delete=[],
+            main_message_id=main_message.message_id,
+        )

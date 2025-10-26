@@ -27,4 +27,6 @@ class SupportState(StatesGroup):
 
 class AdminSupportState(StatesGroup):
     message_from_support = State()
+    sending_appeal_id_for_find = State()
+    sending_username_for_find = State()
     waiting_for_message = State()

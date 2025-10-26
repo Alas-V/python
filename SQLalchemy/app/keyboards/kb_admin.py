@@ -217,16 +217,28 @@ class KbAdmin:
                         callback_data="admin_find_by_username",
                     )
                 ],
-                [
-                    InlineKeyboardButton(
-                        text="📅 Дата обращения", callback_data="admin_find_by_date"
-                    )
-                ],
+                # [
+                #     InlineKeyboardButton(
+                #         text="📅 Дата обращения", callback_data="admin_find_by_date"
+                #     )
+                # ],
                 [
                     InlineKeyboardButton(
                         text="🔙 Назад в поддержку", callback_data="admin_main_support"
                     )
                 ],
+            ]
+        )
+
+    @staticmethod
+    async def go_back_to_find_filters() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад к фильтрам", callback_data="support_my_closed"
+                    )
+                ]
             ]
         )
 
