@@ -1504,81 +1504,135 @@ class StatisticsQueries:
     @staticmethod
     async def get_comprehensive_stats() -> Dict[str, Any]:
         async with AsyncSessionLocal() as session:
-            query = text("""
-                WITH revenue_stats AS (
+            try:
+                query = text("""
+                    WITH revenue_stats AS (
+                        SELECT 
+                            -- Реализованная выручка (доставленные заказы)
+                            COALESCE(SUM(CASE WHEN status = 'Доставлен✅' AND DATE(created_date) = CURRENT_DATE THEN price ELSE 0 END), 0) as realized_revenue_today,
+                            COALESCE(SUM(CASE WHEN status = 'Доставлен✅' AND created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN price ELSE 0 END), 0) as realized_revenue_month,
+                            COALESCE(SUM(CASE WHEN status = 'Доставлен✅' THEN price ELSE 0 END), 0) as realized_revenue_total,
+                            
+                            -- Общий объем продаж (все заказы)
+                            COALESCE(SUM(CASE WHEN DATE(created_date) = CURRENT_DATE THEN price ELSE 0 END), 0) as total_sales_today,
+                            COALESCE(SUM(CASE WHEN created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN price ELSE 0 END), 0) as total_sales_month,
+                            COALESCE(SUM(price), 0) as total_sales_total,
+                            
+                            -- Ожидаемая выручка (заказы в процессе)
+                            COALESCE(SUM(CASE WHEN status IN ('🚚Доставляется', 'В обработке⌛') AND DATE(created_date) = CURRENT_DATE THEN price ELSE 0 END), 0) as expected_revenue_today,
+                            COALESCE(SUM(CASE WHEN status IN ('🚚Доставляется', 'В обработке⌛') AND created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN price ELSE 0 END), 0) as expected_revenue_month,
+                            COALESCE(SUM(CASE WHEN status IN ('🚚Доставляется', 'В обработке⌛') THEN price ELSE 0 END), 0) as expected_revenue_total
+                        FROM order_data
+                    ),
+                    order_stats AS (
+                        SELECT 
+                            COUNT(CASE WHEN DATE(created_date) = CURRENT_DATE THEN 1 END) as orders_today,
+                            COUNT(CASE WHEN created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as orders_month,
+                            COUNT(*) as orders_total,
+                            COUNT(CASE WHEN status = '🚚Доставляется' THEN 1 END) as delivering_orders,
+                            COUNT(CASE WHEN status = 'В обработке⌛' THEN 1 END) as processing_orders,
+                            COUNT(CASE WHEN status = 'Доставлен✅' THEN 1 END) as completed_orders,
+                            COUNT(CASE WHEN status = 'Отменен❌' AND DATE(created_date) = CURRENT_DATE THEN 1 END) as cancelled_today,
+                            COUNT(CASE WHEN status = 'Отменен❌' AND created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as cancelled_month,
+                            COUNT(CASE WHEN status = 'Отменен❌' THEN 1 END) as cancelled_total
+                        FROM order_data
+                    ),
+                    user_stats AS (
+                        SELECT COUNT(*) as total_users FROM users
+                    ),
+                    admin_stats AS (
+                        SELECT COUNT(*) as total_admins FROM admins
+                    ),
+                    genre_stats AS (
+                        SELECT 
+                            json_object_agg(book_genre, genre_count) as genres
+                        FROM (
+                            SELECT book_genre, COUNT(*) as genre_count
+                            FROM books 
+                            WHERE book_genre IS NOT NULL 
+                            GROUP BY book_genre
+                        ) genre_counts
+                    ),
+                    book_stats AS (
+                        SELECT COUNT(*) as total_books FROM books
+                    ),
+                    appeal_stats AS (
+                        SELECT COUNT(*) as active_appeals
+                        FROM support_appeals 
+                        WHERE status IN ('new', 'in_work')
+                    ),
+                    role_stats AS (
+                        SELECT 
+                            json_object_agg(role_name, role_count) as roles
+                        FROM (
+                            SELECT role_name, COUNT(*) as role_count
+                            FROM admins 
+                            GROUP BY role_name
+                        ) role_counts
+                    )
+                    
                     SELECT 
-                        COALESCE(SUM(CASE WHEN status = 'Доставлен✅' AND DATE(created_date) = CURRENT_DATE THEN price ELSE 0 END), 0) as revenue_today,
-                        COALESCE(SUM(CASE WHEN status = 'Доставлен✅' AND created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN price ELSE 0 END), 0) as revenue_month,
-                        COALESCE(SUM(CASE WHEN status = 'Доставлен✅' THEN price ELSE 0 END), 0) as revenue_total
-                    FROM order_data
-                ),
-                order_stats AS (
-                    SELECT 
-                        COUNT(CASE WHEN DATE(created_date) = CURRENT_DATE THEN 1 END) as orders_today,
-                        COUNT(CASE WHEN created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as orders_month,
-                        COUNT(*) as orders_total,
-                        COUNT(CASE WHEN status = '🚚Доставляется' THEN 1 END) as delivering_orders,
-                        COUNT(CASE WHEN status = 'Отменен❌' AND DATE(created_date) = CURRENT_DATE THEN 1 END) as cancelled_today,
-                        COUNT(CASE WHEN status = 'Отменен❌' AND created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as cancelled_month,
-                        COUNT(CASE WHEN status = 'Отменен❌' THEN 1 END) as cancelled_total
-                    FROM order_data
-                ),
-                user_stats AS (
-                    SELECT COUNT(*) as total_users FROM users
-                ),
-                admin_stats AS (
-                    SELECT 
-                        role_name,
-                        COUNT(*) as count
-                    FROM admins
-                    GROUP BY role_name
-                ),
-                book_stats AS (
-                    SELECT 
-                        COUNT(*) as total_books,
-                        json_object_agg(
-                            book_genre, 
-                            COUNT(*) FILTER (WHERE book_genre IS NOT NULL)
-                        ) as genres
-                    FROM books
-                ),
-                appeal_stats AS (
-                    SELECT COUNT(*) as active_appeals
-                    FROM support_appeals 
-                    WHERE status IN ('new', 'in_work')
-                )
-                
-                SELECT 
-                    rs.*, os.*, us.total_users,
-                    (SELECT COUNT(*) FROM admins) as total_admins,
-                    bs.total_books, bs.genres as books_by_genre,
-                    aps.active_appeals
-                FROM revenue_stats rs, order_stats os, user_stats us, book_stats bs, appeal_stats aps
-            """)
-            result = await session.execute(query)
-            row = result.mappings().first()
-            if row and row["books_by_genre"]:
-                books_by_genre = row["books_by_genre"]
-            else:
-                books_by_genre = {}
-            return {
-                "revenue_today": row["revenue_today"],
-                "revenue_month": row["revenue_month"],
-                "revenue_total": row["revenue_total"],
-                "orders_today": row["orders_today"],
-                "orders_month": row["orders_month"],
-                "orders_total": row["orders_total"],
-                "delivering_orders": row["delivering_orders"],
-                "cancelled_today": row["cancelled_today"],
-                "cancelled_month": row["cancelled_month"],
-                "cancelled_total": row["cancelled_total"],
-                "total_users": row["total_users"],
-                "total_admins": row["total_admins"],
-                "total_books": row["total_books"],
-                "books_by_genre": books_by_genre,
-                "active_appeals": row["active_appeals"],
-                "admins_by_role": await StatisticsQueries._get_admins_by_role(session),
-            }
+                        rev.realized_revenue_today, rev.realized_revenue_month, rev.realized_revenue_total,
+                        rev.total_sales_today, rev.total_sales_month, rev.total_sales_total,
+                        rev.expected_revenue_today, rev.expected_revenue_month, rev.expected_revenue_total,
+                        os.orders_today, os.orders_month, os.orders_total, 
+                        os.delivering_orders, os.processing_orders, os.completed_orders,
+                        os.cancelled_today, os.cancelled_month, os.cancelled_total,
+                        us.total_users,
+                        ads.total_admins,
+                        bs.total_books,
+                        gs.genres as books_by_genre,
+                        aps.active_appeals,
+                        rls.roles as admins_by_role
+                    FROM revenue_stats rev,
+                        order_stats os, 
+                        user_stats us, 
+                        admin_stats ads, 
+                        book_stats bs, 
+                        genre_stats gs,
+                        appeal_stats aps,
+                        role_stats rls
+                """)
+
+                result = await session.execute(query)
+                row = result.mappings().first()
+
+                if not row:
+                    return {"error": "No data found"}
+
+                return {
+                    # Выручка
+                    "realized_revenue_today": row["realized_revenue_today"] or 0,
+                    "realized_revenue_month": row["realized_revenue_month"] or 0,
+                    "realized_revenue_total": row["realized_revenue_total"] or 0,
+                    "total_sales_today": row["total_sales_today"] or 0,
+                    "total_sales_month": row["total_sales_month"] or 0,
+                    "total_sales_total": row["total_sales_total"] or 0,
+                    "expected_revenue_today": row["expected_revenue_today"] or 0,
+                    "expected_revenue_month": row["expected_revenue_month"] or 0,
+                    "expected_revenue_total": row["expected_revenue_total"] or 0,
+                    # Заказы
+                    "orders_today": row["orders_today"] or 0,
+                    "orders_month": row["orders_month"] or 0,
+                    "orders_total": row["orders_total"] or 0,
+                    "delivering_orders": row["delivering_orders"] or 0,
+                    "processing_orders": row["processing_orders"] or 0,
+                    "completed_orders": row["completed_orders"] or 0,
+                    "cancelled_today": row["cancelled_today"] or 0,
+                    "cancelled_month": row["cancelled_month"] or 0,
+                    "cancelled_total": row["cancelled_total"] or 0,
+                    # Остальное
+                    "total_users": row["total_users"] or 0,
+                    "total_admins": row["total_admins"] or 0,
+                    "total_books": row["total_books"] or 0,
+                    "books_by_genre": row["books_by_genre"] or {},
+                    "active_appeals": row["active_appeals"] or 0,
+                    "admins_by_role": row["admins_by_role"] or {},
+                }
+
+            except Exception as e:
+                print(f"Error getting statistics: {e}")
+                return {"error": str(e)}
 
     @staticmethod
     async def _get_admins_by_role(session):

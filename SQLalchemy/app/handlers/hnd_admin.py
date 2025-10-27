@@ -584,10 +584,10 @@ async def admin_statistics(
         await callback.message.edit_text(
             text=text,
             reply_markup=await KbAdmin.in_admin_statistic(),
-            parse_mode="Markdown",
+            parse_mode="HTML",  # Изменили на HTML
         )
     except Exception as e:
-        print(f"Error getting statistics: {e}")
+        print(f"Error in admin_statistics: {e}")
         await callback.answer("❌ Ошибка при получении статистики", show_alert=True)
 
 

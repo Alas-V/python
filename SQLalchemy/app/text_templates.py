@@ -1,7 +1,3 @@
-from datetime import datetime
-from typing import Dict, Any
-
-
 async def get_book_details(book_data: dict):
     rating = float(book_data.get("book_rating"))
     price = float(book_data.get("book_price"))
@@ -371,62 +367,86 @@ async def admin_message_rules() -> str:
 """
 
 
-async def admin_all_statistic_text(stats: Dict[str, Any]) -> str:
-    current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
+GENRES = {
+    "fantasy": "Фэнтази",
+    "horror": "Ужасы",
+    "science_fiction": "Научная Фантастика",
+    "detective": "Детектив",
+    "classic": "Классическая литература",
+    "poetry": "Поэзия",
+}
 
-    def format_money(amount):
-        return f"{amount:,.0f} ₽".replace(",", " ")
 
-    def format_count(count):
-        return f"{count:,}".replace(",", " ")
+GENRES = {
+    "fantasy": "Фэнтази",
+    "horror": "Ужасы",
+    "science_fiction": "Научная Фантастика",
+    "detective": "Детектив",
+    "classic": "Классическая литература",
+    "poetry": "Поэзия",
+}
 
-    text = f"""📊 *ОБЩАЯ СТАТИСТИКА*
-_Обновлено: {current_time}_
 
-💎 *ВЫРУЧКА*
-├── Сегодня: `{format_money(stats["revenue_today"])}`
-├── За месяц: `{format_money(stats["revenue_month"])}`
-└── Всего: `{format_money(stats["revenue_total"])}`
+async def admin_all_statistic_text(stats: dict) -> str:
+    revenue_today = stats.get("revenue_today", 0)
+    revenue_month = stats.get("revenue_month", 0)
+    revenue_total = stats.get("revenue_total", 0)
+    orders_today = stats.get("orders_today", 0)
+    orders_month = stats.get("orders_month", 0)
+    orders_total = stats.get("orders_total", 0)
+    delivering_orders = stats.get("delivering_orders", 0)
+    cancelled_today = stats.get("cancelled_today", 0)
+    cancelled_month = stats.get("cancelled_month", 0)
+    cancelled_total = stats.get("cancelled_total", 0)
+    total_users = stats.get("total_users", 0)
+    total_admins = stats.get("total_admins", 0)
+    total_books = stats.get("total_books", 0)
+    active_appeals = stats.get("active_appeals", 0)
 
-📦 *ЗАКАЗЫ*
-├── Создано сегодня: `{format_count(stats["orders_today"])}`
-├── Создано за месяц: `{format_count(stats["orders_month"])}`
-├── Всего создано: `{format_count(stats["orders_total"])}`
-├── 🚚 В доставке: `{format_count(stats["delivering_orders"])}`
-├── ❌ Отменено сегодня: `{format_count(stats["cancelled_today"])}`
-├── ❌ Отменено за месяц: `{format_count(stats["cancelled_month"])}`
-└── ❌ Всего отменено: `{format_count(stats["cancelled_total"])}`
+    # Админы по ролям
+    admins_by_role = stats.get("admins_by_role", {})
+    admins_role_text = ""
+    for role, count in admins_by_role.items():
+        admins_role_text += f"    • {role}: {count}\n"
 
-👥 *ПОЛЬЗОВАТЕЛИ И АДМИНЫ*
-├── 👤 Всего пользователей: `{format_count(stats["total_users"])}`
-├── 🔧 Всего администраторов: `{format_count(stats["total_admins"])}"""
+    # Книги по жанрам
+    books_by_genre_raw = stats.get("books_by_genre", {})
+    books_genre_text = ""
 
-    for role, count in stats["admins_by_role"].items():
-        role_emoji = {
-            "moderator": "🛠️",
-            "manager": "👨‍💼",
-            "admin": "🔧",
-            "super_admin": "👑",
-        }.get(role, "🔹")
-        text += f"\n├── {role_emoji} {role}: `{format_count(count)}`"
-    text += f"""
-📚 *КНИГИ*
-├── Всего книг: `{format_count(stats["total_books"])}`"""
-    genres_emoji = {
-        "fantasy": "🧙",
-        "horror": "👻",
-        "science_fiction": "🚀",
-        "detective": "🕵️",
-        "classic": "📜",
-        "poetry": "📝",
-    }
-    for genre, count in stats["books_by_genre"].items():
-        emoji = genres_emoji.get(genre, "📖")
-        genre_name = genre.replace("_", " ").title()
-        text += f"\n├── {emoji} {genre_name}: `{format_count(count)}`"
-    text += f"""
-🆘 *ПОДДЕРЖКА*
-└── Активных обращений: `{format_count(stats["active_appeals"])}`"""
+    for genre_en, count in books_by_genre_raw.items():
+        genre_ru = GENRES.get(genre_en, genre_en)
+        books_genre_text += f"    • {genre_ru}: {count}\n"
+
+    text = f"""<b>📊 Общая статистика магазина</b>
+
+<b>💰 Финансы:</b>
+    • Сегодня: {revenue_today} руб.
+    • За месяц: {revenue_month} руб.
+    • Всего: {revenue_total} руб.
+
+<b>📦 Заказы:</b>
+    • Сегодня: {orders_today}
+    • За месяц: {orders_month}
+    • Всего: {orders_total}
+    • В доставке: {delivering_orders}
+    • Отмены сегодня: {cancelled_today}
+    • Отмены за месяц: {cancelled_month}
+    • Всего отмен: {cancelled_total}
+
+<b>👥 Пользователи:</b>
+    • Всего пользователей: {total_users}
+    • Всего администраторов: {total_admins}
+    • По ролям:
+{admins_role_text if admins_role_text else "    • Нет данных"}
+
+<b>📚 Книги:</b>
+    • Всего книг: {total_books}
+    • По жанрам:
+{books_genre_text if books_genre_text else "    • Нет данных"}
+
+<b>🆘 Обращения в поддержку:</b>
+    • Активные обращения: {active_appeals}"""
+
     return text
 
 
