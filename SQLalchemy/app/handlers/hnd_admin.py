@@ -5,13 +5,14 @@ from aiogram.fsm.context import FSMContext
 from middleware.mw_admin import AdminMiddleware
 from keyboards.kb_admin import KbAdmin
 from keyboards.kb_support import SupportKeyboards
-from queries.orm import AdminQueries, SupportQueries
+from queries.orm import AdminQueries, SupportQueries, StatisticsQueries
 from functools import wraps
 from typing import Union
 from text_templates import (
     admin_personal_support_statistic,
     admin_appeal_split_messages,
     admin_message_rules,
+    admin_all_statistic_text,
 )
 from utils.states import AdminSupportState
 from models import AppealStatus, AdminPermission
@@ -174,7 +175,7 @@ async def my_support_statistics(
         except Exception:
             pass
     await state.clear()
-    statistic_data = await AdminQueries.get_admin_support_statistics(
+    statistic_data = await StatisticsQueries.get_admin_support_statistics(
         telegram_id=int(callback.from_user.id)
     )
     if "error" in statistic_data:
@@ -516,7 +517,80 @@ async def admin_find_by_username(
     await state.update_data(main_message_id=main_message.message_id)
 
 
-# admin_main_stats
+@admin_router.callback_query(F.data.startswith("search_username_page_"))
+@admin_required
+async def search_username_pagination(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    page = int(callback.data.split("_")[-1])
+    data = await state.get_data()
+    username = data.get("search_username")
+    if not username:
+        await callback.answer("Ошибка поиска", show_alert=True)
+        return
+    telegram_id = int(callback.from_user.id)
+    admin = await AdminQueries.get_admin_by_telegram_id(telegram_id)
+    has_admin_permission = PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    )
+    appeals_data, total_count = await AdminQueries.get_appeals_by_username(
+        username=username,
+        admin_id=admin.admin_id,
+        has_admin_permission=has_admin_permission,
+        page=page,
+        items_per_page=10,
+    )
+    if not appeals_data:
+        await callback.answer("Больше обращений нет", show_alert=True)
+        return
+    await callback.message.edit_text(
+        text=f"📋 Обращения пользователя @{username} (найдено: {total_count}):",
+        reply_markup=await KbAdmin.universal_appeals_keyboard(
+            appeals_data=appeals_data,
+            page=page,
+            total_count=total_count,
+            callback_prefix="admin_open_appeal",
+            page_callback="search_username_page",
+            back_callback="support_my_closed",
+            items_per_page=10,
+        ),
+    )
+    await state.update_data(current_page=page)
+
+
+@admin_router.callback_query(F.data == "admin_main_stats")
+@admin_required
+async def admin_statistics(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.VIEW_STATS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для просмотра статистики", show_alert=True
+        )
+        return
+    try:
+        stats = await StatisticsQueries.get_comprehensive_stats()
+        text = await admin_all_statistic_text(stats)
+        await callback.message.edit_text(
+            text=text,
+            reply_markup=await KbAdmin.in_admin_statistic(),
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        print(f"Error getting statistics: {e}")
+        await callback.answer("❌ Ошибка при получении статистики", show_alert=True)
+
+
 # admin_main_orders
 # admin_main_control_books
 # admin_main_control_admins
@@ -713,3 +787,96 @@ async def appeal_id_to_find(
             messages_to_delete=[],
             main_message_id=main_message.message_id,
         )
+
+
+@admin_router.message(AdminSupportState.sending_username_for_find, F.text)
+@admin_required
+async def username_to_find(
+    message: Message,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    bot = message.bot
+    data = await state.get_data()
+    old_main_message_id = data.get("main_message_id")
+    last_hint_id = data.get("last_hint_id")
+    if last_hint_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_hint_id)
+        except Exception:
+            pass
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение пользователя: {e}")
+    username = message.text.strip()
+    if not username:
+        hint_message = await message.answer(
+            text="❌ Username не может быть пустым. Попробуйте еще раз:"
+        )
+        await state.update_data(last_hint_id=hint_message.message_id)
+        return
+    if username.startswith("@"):
+        username = username[1:]
+    telegram_id = int(message.from_user.id)
+    admin = await AdminQueries.get_admin_by_telegram_id(telegram_id)
+    has_admin_permission = PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    )
+    has_appeals = await AdminQueries.has_appeals_by_username(
+        username=username,
+        admin_id=admin.admin_id,
+        has_admin_permission=has_admin_permission,
+    )
+    if not has_appeals:
+        hint_message = await message.answer(
+            text=f"❌ По username @{username} не найдено обращений."
+        )
+        await state.update_data(last_hint_id=hint_message.message_id)
+        return
+    if old_main_message_id:
+        try:
+            await bot.delete_message(
+                chat_id=message.chat.id, message_id=old_main_message_id
+            )
+        except Exception as e:
+            print(f"Не удалось удалить старое сообщение: {e}")
+    appeals_data, total_count = await AdminQueries.get_appeals_by_username(
+        username=username,
+        admin_id=admin.admin_id,
+        has_admin_permission=has_admin_permission,
+        page=0,
+        items_per_page=10,
+    )
+    if not appeals_data:
+        main_message = await message.answer(
+            text=f"❌ По username @{username} не найдено обращений.",
+            reply_markup=await KbAdmin.go_back_to_find_filters(),
+        )
+        await state.update_data(
+            messages_to_delete=[],
+            main_message_id=main_message.message_id,
+        )
+        return
+    main_message = await message.answer(
+        text=f"📋 Обращения пользователя @{username} (найдено: {total_count}):",
+        reply_markup=await KbAdmin.universal_appeals_keyboard(
+            appeals_data=appeals_data,
+            page=0,
+            total_count=total_count,
+            callback_prefix="admin_open_appeal",
+            page_callback="search_username_page",
+            back_callback="support_my_closed",
+            items_per_page=10,
+        ),
+    )
+    await state.clear()
+    await state.update_data(
+        messages_to_delete=[],
+        main_message_id=main_message.message_id,
+        search_username=username,
+        current_page=0,
+        total_count=total_count,
+    )

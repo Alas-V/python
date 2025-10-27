@@ -23,7 +23,8 @@ from faker import Faker
 import random
 from datetime import datetime, timedelta
 from sqlalchemy import case, select, text, func, and_, update, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
+from typing import Dict, Any
 import math
 
 fake = Faker("ru_RU")
@@ -1252,85 +1253,6 @@ class AdminQueries:
             return appeals_data
 
     @staticmethod
-    async def get_admin_support_statistics(telegram_id: int) -> dict:
-        async with AsyncSessionLocal() as session:
-            today = datetime.now().date()
-            today_start = datetime.combine(today, datetime.min.time())
-            admin_query = select(Admin.admin_id, Admin.name).where(
-                Admin.telegram_id == telegram_id
-            )
-            admin_result = await session.execute(admin_query)
-            admin_row = admin_result.first()
-            if not admin_row:
-                return {"error": "Администратор не найден"}
-            admin_id, admin_name = admin_row
-            sql_query = text("""
-                SELECT 
-                    -- ОБЩАЯ статистика системы
-                    COUNT(sa.appeal_id) as total_appeals,
-                    COUNT(CASE WHEN sa.created_date >= :today_start THEN 1 END) as appeals_today,
-                    
-                    -- Общая статистика по статусам за сегодня
-                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'new' THEN 1 END) as new_today,
-                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'in_work' THEN 1 END) as in_work_today,
-                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'closed_by_admin' THEN 1 END) as closed_by_admin_today,
-                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'closed_by_user' THEN 1 END) as closed_by_user_today,
-                    
-                    -- Статистика по приоритетам (только новые и в работе)
-                    COUNT(CASE WHEN sa.priority = 'critical' AND sa.status IN ('new', 'in_work') THEN 1 END) as critical_count,
-                    COUNT(CASE WHEN sa.priority = 'high' AND sa.status IN ('new', 'in_work') THEN 1 END) as high_count,
-                    COUNT(CASE WHEN sa.priority = 'normal' AND sa.status IN ('new', 'in_work') THEN 1 END) as normal_count,
-                    
-                    -- ПЕРСОНАЛЬНАЯ статистика админа (обращения, которые он взял)
-                    COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'in_work' THEN 1 END) as admin_active,
-                    COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'closed_by_admin' THEN 1 END) as admin_closed,
-                    
-                    -- Статистика ответов админа (количество сообщений, которые он отправил сегодня)
-                    (SELECT COUNT(am.message_id) 
-                    FROM admin_messages am 
-                    WHERE am.admin_id = :admin_id 
-                    AND am.created_date >= :today_start) as admin_responses_today,
-                    
-                    -- Обращения, которые админ взял, но не ответил более 24 часов
-                    COUNT(CASE WHEN 
-                        sa.assigned_admin_id = :admin_id 
-                        AND sa.status = 'in_work' 
-                        AND sa.updated_at < NOW() - INTERVAL '24 hours'
-                        THEN 1 END) as admin_overdue
-                    
-                FROM support_appeals sa
-            """)
-            params = {"today_start": today_start, "admin_id": admin_id}
-            result = await session.execute(sql_query, params)
-            row = result.fetchone()
-            today_closed_total = (row.closed_by_admin_today or 0) + (
-                row.closed_by_user_today or 0
-            )
-            return {
-                # Общая статистика системы
-                "total_appeals": row.total_appeals or 0,
-                "appeals_today": row.appeals_today or 0,
-                "new_appeals_today": row.new_today or 0,
-                "in_work_today": row.in_work_today or 0,
-                "closed_today_total": today_closed_total,
-                "closed_by_admin_today": row.closed_by_admin_today or 0,
-                "closed_by_user_today": row.closed_by_user_today or 0,
-                # Статистика по приоритетам
-                "critical_appeals": row.critical_count or 0,
-                "high_priority_appeals": row.high_count or 0,
-                "normal_priority_appeals": row.normal_count or 0,
-                # ПЕРСОНАЛЬНАЯ статистика админа
-                "admin_name": admin_name,
-                "admin_active_appeals": row.admin_active or 0,
-                "admin_closed_appeals": row.admin_closed or 0,
-                "admin_responses_today": row.admin_responses_today or 0,
-                "admin_overdue_appeals": row.admin_overdue or 0,
-                # Временные метки
-                "stats_date": today.strftime("%d.%m.%Y"),
-                "generated_at": datetime.now().strftime("%H:%M"),
-            }
-
-    @staticmethod
     async def get_new_appeal():
         async with AsyncSessionLocal() as session:
             appeal = await session.execute(
@@ -1430,6 +1352,242 @@ class AdminQueries:
             )
             is_assigned = appeal.scalar_one_or_none()
             return is_assigned is not None
+
+    @staticmethod
+    async def get_appeals_by_username(
+        username: str,
+        admin_id: int,
+        has_admin_permission: bool,
+        page: int = 0,
+        items_per_page: int = 10,
+    ) -> tuple[list, int]:
+        async with AsyncSessionLocal() as session:
+            query = (
+                select(SupportAppeal)
+                .join(SupportAppeal.user)
+                .where(User.username.ilike(f"%{username}%"))
+            )
+            if not has_admin_permission:
+                query = query.where(SupportAppeal.assigned_admin_id == admin_id)
+            total_count = await session.execute(
+                select(func.count()).select_from(query.subquery())
+            )
+            total_count = total_count.scalar()
+            result = await session.execute(
+                query.options(joinedload(SupportAppeal.user))
+                .order_by(SupportAppeal.updated_at.desc())
+                .offset(page * items_per_page)
+                .limit(items_per_page)
+            )
+            appeals = result.scalars().all()
+            appeals_data = []
+            for appeal in appeals:
+                appeals_data.append(
+                    {
+                        "appeal_id": appeal.appeal_id,
+                        "created_date": appeal.created_date,
+                        "updated_at": appeal.updated_at,
+                        "status": appeal.status,
+                        "username": appeal.user.username
+                        if appeal.user
+                        else "Без username",
+                    }
+                )
+            return appeals_data, total_count
+
+    @staticmethod
+    async def has_appeals_by_username(
+        username: str, admin_id: int, has_admin_permission: bool
+    ) -> bool:
+        async with AsyncSessionLocal() as session:
+            query = (
+                select(SupportAppeal.appeal_id)
+                .join(SupportAppeal.user)
+                .where(User.username.ilike(f"%{username}%"))
+            )
+            if not has_admin_permission:
+                query = query.where(SupportAppeal.assigned_admin_id == admin_id)
+            query = query.limit(1)
+            result = await session.execute(query)
+            return result.scalar_one_or_none() is not None
+
+
+class StatisticsQueries:
+    @staticmethod
+    async def get_admin_support_statistics(telegram_id: int) -> dict:
+        async with AsyncSessionLocal() as session:
+            today = datetime.now().date()
+            today_start = datetime.combine(today, datetime.min.time())
+            admin_query = select(Admin.admin_id, Admin.name).where(
+                Admin.telegram_id == telegram_id
+            )
+            admin_result = await session.execute(admin_query)
+            admin_row = admin_result.first()
+            if not admin_row:
+                return {"error": "Администратор не найден"}
+            admin_id, admin_name = admin_row
+            sql_query = text("""
+                SELECT 
+                    -- ОБЩАЯ статистика системы
+                    COUNT(sa.appeal_id) as total_appeals,
+                    COUNT(CASE WHEN sa.created_date >= :today_start THEN 1 END) as appeals_today,
+                    
+                    -- Общая статистика по статусам за сегодня
+                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'new' THEN 1 END) as new_today,
+                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'in_work' THEN 1 END) as in_work_today,
+                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'closed_by_admin' THEN 1 END) as closed_by_admin_today,
+                    COUNT(CASE WHEN sa.created_date >= :today_start AND sa.status = 'closed_by_user' THEN 1 END) as closed_by_user_today,
+                    
+                    -- Статистика по приоритетам (только новые и в работе)
+                    COUNT(CASE WHEN sa.priority = 'critical' AND sa.status IN ('new', 'in_work') THEN 1 END) as critical_count,
+                    COUNT(CASE WHEN sa.priority = 'high' AND sa.status IN ('new', 'in_work') THEN 1 END) as high_count,
+                    COUNT(CASE WHEN sa.priority = 'normal' AND sa.status IN ('new', 'in_work') THEN 1 END) as normal_count,
+                    
+                    -- ПЕРСОНАЛЬНАЯ статистика админа (обращения, которые он взял)
+                    COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'in_work' THEN 1 END) as admin_active,
+                    COUNT(CASE WHEN sa.assigned_admin_id = :admin_id AND sa.status = 'closed_by_admin' THEN 1 END) as admin_closed,
+                    
+                    -- Статистика ответов админа (количество сообщений, которые он отправил сегодня)
+                    (SELECT COUNT(am.message_id) 
+                    FROM admin_messages am 
+                    WHERE am.admin_id = :admin_id 
+                    AND am.created_date >= :today_start) as admin_responses_today,
+                    
+                    -- Обращения, которые админ взял, но не ответил более 24 часов
+                    COUNT(CASE WHEN 
+                        sa.assigned_admin_id = :admin_id 
+                        AND sa.status = 'in_work' 
+                        AND sa.updated_at < NOW() - INTERVAL '24 hours'
+                        THEN 1 END) as admin_overdue
+                    
+                FROM support_appeals sa
+            """)
+            params = {"today_start": today_start, "admin_id": admin_id}
+            result = await session.execute(sql_query, params)
+            row = result.fetchone()
+            today_closed_total = (row.closed_by_admin_today or 0) + (
+                row.closed_by_user_today or 0
+            )
+            return {
+                # Общая статистика системы
+                "total_appeals": row.total_appeals or 0,
+                "appeals_today": row.appeals_today or 0,
+                "new_appeals_today": row.new_today or 0,
+                "in_work_today": row.in_work_today or 0,
+                "closed_today_total": today_closed_total,
+                "closed_by_admin_today": row.closed_by_admin_today or 0,
+                "closed_by_user_today": row.closed_by_user_today or 0,
+                # Статистика по приоритетам
+                "critical_appeals": row.critical_count or 0,
+                "high_priority_appeals": row.high_count or 0,
+                "normal_priority_appeals": row.normal_count or 0,
+                # ПЕРСОНАЛЬНАЯ статистика админа
+                "admin_name": admin_name,
+                "admin_active_appeals": row.admin_active or 0,
+                "admin_closed_appeals": row.admin_closed or 0,
+                "admin_responses_today": row.admin_responses_today or 0,
+                "admin_overdue_appeals": row.admin_overdue or 0,
+                # Временные метки
+                "stats_date": today.strftime("%d.%m.%Y"),
+                "generated_at": datetime.now().strftime("%H:%M"),
+            }
+
+    @staticmethod
+    async def _get_admins_by_role(session):
+        """Дополнительный запрос для получения админов по ролям"""
+        query = text(
+            "SELECT role_name, COUNT(*) as count FROM admins GROUP BY role_name"
+        )
+        result = await session.execute(query)
+        return {row.role_name: row.count for row in result.all()}
+
+    @staticmethod
+    async def get_comprehensive_stats() -> Dict[str, Any]:
+        async with AsyncSessionLocal() as session:
+            query = text("""
+                WITH revenue_stats AS (
+                    SELECT 
+                        COALESCE(SUM(CASE WHEN status = 'Доставлен✅' AND DATE(created_date) = CURRENT_DATE THEN price ELSE 0 END), 0) as revenue_today,
+                        COALESCE(SUM(CASE WHEN status = 'Доставлен✅' AND created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN price ELSE 0 END), 0) as revenue_month,
+                        COALESCE(SUM(CASE WHEN status = 'Доставлен✅' THEN price ELSE 0 END), 0) as revenue_total
+                    FROM order_data
+                ),
+                order_stats AS (
+                    SELECT 
+                        COUNT(CASE WHEN DATE(created_date) = CURRENT_DATE THEN 1 END) as orders_today,
+                        COUNT(CASE WHEN created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as orders_month,
+                        COUNT(*) as orders_total,
+                        COUNT(CASE WHEN status = '🚚Доставляется' THEN 1 END) as delivering_orders,
+                        COUNT(CASE WHEN status = 'Отменен❌' AND DATE(created_date) = CURRENT_DATE THEN 1 END) as cancelled_today,
+                        COUNT(CASE WHEN status = 'Отменен❌' AND created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as cancelled_month,
+                        COUNT(CASE WHEN status = 'Отменен❌' THEN 1 END) as cancelled_total
+                    FROM order_data
+                ),
+                user_stats AS (
+                    SELECT COUNT(*) as total_users FROM users
+                ),
+                admin_stats AS (
+                    SELECT 
+                        role_name,
+                        COUNT(*) as count
+                    FROM admins
+                    GROUP BY role_name
+                ),
+                book_stats AS (
+                    SELECT 
+                        COUNT(*) as total_books,
+                        json_object_agg(
+                            book_genre, 
+                            COUNT(*) FILTER (WHERE book_genre IS NOT NULL)
+                        ) as genres
+                    FROM books
+                ),
+                appeal_stats AS (
+                    SELECT COUNT(*) as active_appeals
+                    FROM support_appeals 
+                    WHERE status IN ('new', 'in_work')
+                )
+                
+                SELECT 
+                    rs.*, os.*, us.total_users,
+                    (SELECT COUNT(*) FROM admins) as total_admins,
+                    bs.total_books, bs.genres as books_by_genre,
+                    aps.active_appeals
+                FROM revenue_stats rs, order_stats os, user_stats us, book_stats bs, appeal_stats aps
+            """)
+            result = await session.execute(query)
+            row = result.mappings().first()
+            if row and row["books_by_genre"]:
+                books_by_genre = row["books_by_genre"]
+            else:
+                books_by_genre = {}
+            return {
+                "revenue_today": row["revenue_today"],
+                "revenue_month": row["revenue_month"],
+                "revenue_total": row["revenue_total"],
+                "orders_today": row["orders_today"],
+                "orders_month": row["orders_month"],
+                "orders_total": row["orders_total"],
+                "delivering_orders": row["delivering_orders"],
+                "cancelled_today": row["cancelled_today"],
+                "cancelled_month": row["cancelled_month"],
+                "cancelled_total": row["cancelled_total"],
+                "total_users": row["total_users"],
+                "total_admins": row["total_admins"],
+                "total_books": row["total_books"],
+                "books_by_genre": books_by_genre,
+                "active_appeals": row["active_appeals"],
+                "admins_by_role": await StatisticsQueries._get_admins_by_role(session),
+            }
+
+    @staticmethod
+    async def _get_admins_by_role(session):
+        """Дополнительный запрос для получения админов по ролям"""
+        query = text(
+            "SELECT role_name, COUNT(*) as count FROM admins GROUP BY role_name"
+        )
+        result = await session.execute(query)
+        return {row.role_name: row.count for row in result.all()}
 
 
 class DBData:

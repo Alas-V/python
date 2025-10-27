@@ -73,6 +73,14 @@ class KbAdmin:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
+    async def in_admin_statistic() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+            ]
+        )
+
+    @staticmethod
     async def admin_agreement() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
@@ -248,6 +256,9 @@ class KbAdmin:
         page: int = 0,
         total_count: int = 0,
         items_per_page: int = 10,
+        callback_prefix: str = "admin_open_appeal",
+        page_callback: str = "admin_all_closed_appeals_page_",
+        back_callback: str = "support_my_closed",
     ) -> InlineKeyboardMarkup:
         builder = InlineKeyboardBuilder()
         for appeal in appeals_data:
@@ -260,19 +271,19 @@ class KbAdmin:
             button_text = f"{status} | {username} | {date_str}"
             if len(button_text) > 30:
                 available_chars = 30 - len(status) - len(date_str) - 6
-            if available_chars > 3:
-                short_username = (
-                    username[:available_chars] + "..."
-                    if len(username) > available_chars
-                    else username
-                )
-                button_text = f"{status} | {short_username} | {date_str}"
-            else:
-                button_text = f"{status} | {date_str}"
-            if len(button_text) > 30:
-                button_text = button_text[:27] + "..."
+                if available_chars > 3:
+                    short_username = (
+                        username[:available_chars] + "..."
+                        if len(username) > available_chars
+                        else username
+                    )
+                    button_text = f"{status} | {short_username} | {date_str}"
+                else:
+                    button_text = f"{status} | {date_str}"
+                if len(button_text) > 30:
+                    button_text = button_text[:27] + "..."
             builder.button(
-                text=button_text, callback_data=f"admin_open_appeal_{appeal_id}"
+                text=button_text, callback_data=f"{callback_prefix}_{appeal_id}"
             )
         builder.adjust(1)
         if total_count > items_per_page:
@@ -282,7 +293,7 @@ class KbAdmin:
                 pagination_buttons.append(
                     InlineKeyboardButton(
                         text="⬅️",
-                        callback_data=f"admin_all_closed_appeals_page_{page - 1}",
+                        callback_data=f"{page_callback}_{page - 1}",
                     )
                 )
             pagination_buttons.append(
@@ -294,11 +305,9 @@ class KbAdmin:
                 pagination_buttons.append(
                     InlineKeyboardButton(
                         text="➡️",
-                        callback_data=f"admin_all_closed_appeals_page_{page + 1}",
+                        callback_data=f"{page_callback}_{page + 1}",
                     )
                 )
             builder.row(*pagination_buttons)
-        builder.row(
-            InlineKeyboardButton(text="🔙 Назад", callback_data="support_my_closed")
-        )
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=back_callback))
         return builder.as_markup()

@@ -1,3 +1,7 @@
+from datetime import datetime
+from typing import Dict, Any
+
+
 async def get_book_details(book_data: dict):
     rating = float(book_data.get("book_rating"))
     price = float(book_data.get("book_price"))
@@ -271,7 +275,7 @@ async def admin_appeal_split_messages(
 📞 TG ID: `{appeal.telegram_id}`
 📅 Создано: {appeal.created_date.strftime("%d.%m.%Y %H:%M")}
 """
-    admin_info = "Администратор"
+    admin_info = f"Администратор {admin_name.capitalize()}"
     main_text += f"{admin_info}\n"
     if not appeal.user_messages and not appeal.admin_messages:
         return [], main_text + "\n\n📭 *Пока нет сообщений*"
@@ -365,6 +369,65 @@ async def admin_message_rules() -> str:
 
 *Теперь вы можете отправить ответ пользователю. Ваше сообщение будет доставлено сразу после отправки.*
 """
+
+
+async def admin_all_statistic_text(stats: Dict[str, Any]) -> str:
+    current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    def format_money(amount):
+        return f"{amount:,.0f} ₽".replace(",", " ")
+
+    def format_count(count):
+        return f"{count:,}".replace(",", " ")
+
+    text = f"""📊 *ОБЩАЯ СТАТИСТИКА*
+_Обновлено: {current_time}_
+
+💎 *ВЫРУЧКА*
+├── Сегодня: `{format_money(stats["revenue_today"])}`
+├── За месяц: `{format_money(stats["revenue_month"])}`
+└── Всего: `{format_money(stats["revenue_total"])}`
+
+📦 *ЗАКАЗЫ*
+├── Создано сегодня: `{format_count(stats["orders_today"])}`
+├── Создано за месяц: `{format_count(stats["orders_month"])}`
+├── Всего создано: `{format_count(stats["orders_total"])}`
+├── 🚚 В доставке: `{format_count(stats["delivering_orders"])}`
+├── ❌ Отменено сегодня: `{format_count(stats["cancelled_today"])}`
+├── ❌ Отменено за месяц: `{format_count(stats["cancelled_month"])}`
+└── ❌ Всего отменено: `{format_count(stats["cancelled_total"])}`
+
+👥 *ПОЛЬЗОВАТЕЛИ И АДМИНЫ*
+├── 👤 Всего пользователей: `{format_count(stats["total_users"])}`
+├── 🔧 Всего администраторов: `{format_count(stats["total_admins"])}"""
+
+    for role, count in stats["admins_by_role"].items():
+        role_emoji = {
+            "moderator": "🛠️",
+            "manager": "👨‍💼",
+            "admin": "🔧",
+            "super_admin": "👑",
+        }.get(role, "🔹")
+        text += f"\n├── {role_emoji} {role}: `{format_count(count)}`"
+    text += f"""
+📚 *КНИГИ*
+├── Всего книг: `{format_count(stats["total_books"])}`"""
+    genres_emoji = {
+        "fantasy": "🧙",
+        "horror": "👻",
+        "science_fiction": "🚀",
+        "detective": "🕵️",
+        "classic": "📜",
+        "poetry": "📝",
+    }
+    for genre, count in stats["books_by_genre"].items():
+        emoji = genres_emoji.get(genre, "📖")
+        genre_name = genre.replace("_", " ").title()
+        text += f"\n├── {emoji} {genre_name}: `{format_count(count)}`"
+    text += f"""
+🆘 *ПОДДЕРЖКА*
+└── Активных обращений: `{format_count(stats["active_appeals"])}`"""
+    return text
 
 
 async def admin_personal_support_statistic(statistic_data: dict) -> str:
