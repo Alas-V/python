@@ -13,8 +13,10 @@ from text_templates import (
     admin_appeal_split_messages,
     admin_message_rules,
     admin_all_statistic_text,
+    admin_order_statistic,
+    admin_format_order_details,
 )
-from utils.states import AdminSupportState
+from utils.states import AdminSupportState, AdminOrderState
 from models import AppealStatus, AdminPermission
 import asyncio
 from aiogram.exceptions import TelegramBadRequest
@@ -584,14 +586,137 @@ async def admin_statistics(
         await callback.message.edit_text(
             text=text,
             reply_markup=await KbAdmin.in_admin_statistic(),
-            parse_mode="HTML",  # Изменили на HTML
+            parse_mode="HTML",
         )
     except Exception as e:
         print(f"Error in admin_statistics: {e}")
         await callback.answer("❌ Ошибка при получении статистики", show_alert=True)
 
 
-# admin_main_orders
+@admin_router.callback_query(F.data == "admin_main_orders")
+@admin_required
+async def admin_main_orders(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ORDERS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для управления заказами", show_alert=True
+        )
+        return
+    try:
+        order_stats = await StatisticsQueries.orders_statistic()
+
+        if "error" in order_stats:
+            await callback.message.edit_text(
+                "❌ Ошибка при получении статистики заказов",
+                reply_markup=await KbAdmin.kb_admin_main_order(admin_permissions),
+            )
+            return
+
+        text = admin_order_statistic(order_stats)
+        await callback.message.edit_text(
+            text=text,
+            reply_markup=await KbAdmin.kb_admin_main_order(admin_permissions),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"Error in admin_main_orders: {e}")
+        await callback.answer(
+            "❌ Ошибка при получении статистики заказов", show_alert=True
+        )
+
+
+@admin_router.callback_query(F.data == "admin_new_orders")
+@admin_required
+async def admin_new_orders(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        page = 0
+        total_count = await AdminQueries.get_new_orders_count()
+        orders_data = await AdminQueries.get_new_orders_paginated(page=page)
+        if not orders_data:
+            await callback.answer(
+                text="❌ Нет новых заказов",
+                show_alert=True,
+            )
+            return
+        await callback.message.edit_text(
+            text=f"🆕 <b>Новые заказы</b>\n\n📋 Найдено новых заказов: {total_count}",
+            reply_markup=await KbAdmin.kb_admin_new_orders(
+                orders_data=orders_data, page=page, total_count=total_count
+            ),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"Error in admin_new_orders: {e}")
+        await callback.answer("❌ Ошибка при загрузке новых заказов", show_alert=True)
+
+
+@admin_router.callback_query(F.data.startswith("admin_new_orders_page_"))
+@admin_required
+async def admin_new_orders_pagination(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        page = int(callback.data.split("_")[-1])
+        total_count = await AdminQueries.get_new_orders_count()
+        orders_data = await AdminQueries.get_new_orders_paginated(page=page)
+        if not orders_data:
+            await callback.answer("Больше заказов нет", show_alert=True)
+            return
+        await callback.message.edit_text(
+            text=f"🆕 <b>Новые заказы</b>\n\n📋 Найдено новых заказов: {total_count}",
+            reply_markup=await KbAdmin.kb_admin_new_orders(
+                orders_data=orders_data, page=page, total_count=total_count
+            ),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"Error in admin_new_orders_pagination: {e}")
+        await callback.answer("❌ Ошибка при загрузке страницы", show_alert=True)
+
+
+@admin_router.callback_query(F.data.startswith("admin_view_order_"))
+@admin_required
+async def admin_view_order(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        order_id = int(callback.data.split("_")[-1])
+        order_details = await AdminQueries.get_order_details(order_id)
+        if not order_details:
+            await callback.answer("❌ Заказ не найден", show_alert=True)
+            return
+        text = await admin_format_order_details(order_details)
+        await callback.message.edit_text(
+            text=text,
+            reply_markup=await KbAdmin.kb_order_actions(order_id),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"Error in admin_view_order: {e}")
+        await callback.answer("❌ Ошибка при загрузке заказа", show_alert=True)
+
+
 # admin_main_control_books
 # admin_main_control_admins
 

@@ -26,6 +26,7 @@ from sqlalchemy import case, select, text, func, and_, update, or_
 from sqlalchemy.orm import selectinload, joinedload
 from typing import Dict, Any
 import math
+from typing import Optional
 
 fake = Faker("ru_RU")
 
@@ -1411,6 +1412,105 @@ class AdminQueries:
             result = await session.execute(query)
             return result.scalar_one_or_none() is not None
 
+    @staticmethod
+    async def get_new_orders_count() -> int:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(func.count(OrderData.order_id)).where(
+                    OrderData.status == OrderStatus.PROCESSING
+                )
+            )
+            return result.scalar() or 0
+
+    @staticmethod
+    async def get_new_orders_paginated(page: int = 0, items_per_page: int = 10) -> list:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    OrderData.order_id,
+                    OrderData.price,
+                    OrderData.created_date,
+                    OrderData.book_id,
+                    User.username,
+                    User.user_first_name,
+                )
+                .where(OrderData.status == OrderStatus.PROCESSING)
+                .join(User, User.telegram_id == OrderData.telegram_id)
+                .order_by(OrderData.created_date.desc())
+                .offset(page * items_per_page)
+                .limit(items_per_page)
+            )
+            return result.mappings().all()
+
+    @staticmethod
+    async def get_order_details(order_id: int) -> Optional[dict]:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    OrderData.order_id,
+                    OrderData.price,
+                    OrderData.created_date,
+                    OrderData.book_id,
+                    OrderData.quantity,
+                    OrderData.status,
+                    User.username,
+                    User.user_first_name,
+                    User.telegram_id,
+                    UserAddress.name,
+                    UserAddress.phone,
+                    UserAddress.city,
+                    UserAddress.street,
+                    UserAddress.house,
+                    UserAddress.apartment,
+                    UserAddress.comment,
+                )
+                .where(OrderData.order_id == order_id)
+                .join(User, User.telegram_id == OrderData.telegram_id)
+                .join(UserAddress, UserAddress.address_id == OrderData.address_id)
+            )
+            order = result.mappings().first()
+            if not order:
+                return None
+            books_info = []
+            if order.book_id and order.quantity:
+                for i, book_id in enumerate(order.book_id):
+                    book_result = await session.execute(
+                        select(Book.book_title, Book.book_price).where(
+                            Book.book_id == book_id
+                        )
+                    )
+                    book = book_result.mappings().first()
+                    if book:
+                        quantity = order.quantity[i] if i < len(order.quantity) else 1
+                        books_info.append(
+                            {
+                                "title": book.book_title,
+                                "price": book.book_price,
+                                "quantity": quantity,
+                            }
+                        )
+            return {
+                "order_id": order.order_id,
+                "total_price": order.price,
+                "created_date": order.created_date,
+                "status": order.status,
+                "user": {
+                    "username": order.username,
+                    "first_name": order.user_first_name,
+                    "telegram_id": order.telegram_id,
+                },
+                "address": {
+                    "name": order.name,
+                    "phone": order.phone,
+                    "city": order.city,
+                    "street": order.street,
+                    "house": order.house,
+                    "apartment": order.apartment,
+                    "comment": order.comment,
+                },
+                "books": books_info,
+            }
+
 
 class StatisticsQueries:
     @staticmethod
@@ -1493,15 +1593,6 @@ class StatisticsQueries:
             }
 
     @staticmethod
-    async def _get_admins_by_role(session):
-        """Дополнительный запрос для получения админов по ролям"""
-        query = text(
-            "SELECT role_name, COUNT(*) as count FROM admins GROUP BY role_name"
-        )
-        result = await session.execute(query)
-        return {row.role_name: row.count for row in result.all()}
-
-    @staticmethod
     async def get_comprehensive_stats() -> Dict[str, Any]:
         async with AsyncSessionLocal() as session:
             try:
@@ -1554,10 +1645,15 @@ class StatisticsQueries:
                         ) genre_counts
                     ),
                     book_stats AS (
-                        SELECT COUNT(*) as total_books FROM books
+                        SELECT 
+                            COUNT(*) as total_books,
+                            COUNT(CASE WHEN book_status = 'out of stock' THEN 1 END) as out_of_stock_books
+                        FROM books
                     ),
                     appeal_stats AS (
-                        SELECT COUNT(*) as active_appeals
+                        SELECT 
+                            COUNT(*) as active_appeals,
+                            COUNT(CASE WHEN priority = 'critical' THEN 1 END) as critical_appeals
                         FROM support_appeals 
                         WHERE status IN ('new', 'in_work')
                     ),
@@ -1581,8 +1677,10 @@ class StatisticsQueries:
                         us.total_users,
                         ads.total_admins,
                         bs.total_books,
+                        bs.out_of_stock_books,
                         gs.genres as books_by_genre,
                         aps.active_appeals,
+                        aps.critical_appeals,
                         rls.roles as admins_by_role
                     FROM revenue_stats rev,
                         order_stats os, 
@@ -1593,13 +1691,10 @@ class StatisticsQueries:
                         appeal_stats aps,
                         role_stats rls
                 """)
-
                 result = await session.execute(query)
                 row = result.mappings().first()
-
                 if not row:
                     return {"error": "No data found"}
-
                 return {
                     # Выручка
                     "realized_revenue_today": row["realized_revenue_today"] or 0,
@@ -1625,11 +1720,12 @@ class StatisticsQueries:
                     "total_users": row["total_users"] or 0,
                     "total_admins": row["total_admins"] or 0,
                     "total_books": row["total_books"] or 0,
+                    "out_of_stock_books": row["out_of_stock_books"] or 0,
                     "books_by_genre": row["books_by_genre"] or {},
                     "active_appeals": row["active_appeals"] or 0,
+                    "critical_appeals": row["critical_appeals"] or 0,
                     "admins_by_role": row["admins_by_role"] or {},
                 }
-
             except Exception as e:
                 print(f"Error getting statistics: {e}")
                 return {"error": str(e)}
@@ -1642,6 +1738,49 @@ class StatisticsQueries:
         )
         result = await session.execute(query)
         return {row.role_name: row.count for row in result.all()}
+
+    @staticmethod
+    async def orders_statistic() -> Dict[str, Any]:
+        async with AsyncSessionLocal() as session:
+            try:
+                query = text("""
+                    WITH order_stats AS (
+                        SELECT 
+                            COUNT(CASE WHEN DATE(created_date) = CURRENT_DATE THEN 1 END) as orders_today,
+                            COUNT(CASE WHEN created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as orders_month,
+                            COUNT(*) as orders_total,
+                            COUNT(CASE WHEN status = '🚚Доставляется' THEN 1 END) as delivering_orders,
+                            COUNT(CASE WHEN status = 'В обработке⌛' THEN 1 END) as processing_orders,
+                            COUNT(CASE WHEN status = 'Доставлен✅' THEN 1 END) as completed_orders,
+                            COUNT(CASE WHEN status = 'Отменен❌' AND DATE(created_date) = CURRENT_DATE THEN 1 END) as cancelled_today,
+                            COUNT(CASE WHEN status = 'Отменен❌' AND created_date >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as cancelled_month,
+                            COUNT(CASE WHEN status = 'Отменен❌' THEN 1 END) as cancelled_total
+                        FROM order_data
+                    )
+                    SELECT * FROM order_stats
+                """)
+
+                result = await session.execute(query)
+                row = result.mappings().first()
+
+                if not row:
+                    return {"error": "No data found"}
+
+                return {
+                    "orders_today": row["orders_today"] or 0,
+                    "orders_month": row["orders_month"] or 0,
+                    "orders_total": row["orders_total"] or 0,
+                    "delivering_orders": row["delivering_orders"] or 0,
+                    "processing_orders": row["processing_orders"] or 0,
+                    "completed_orders": row["completed_orders"] or 0,
+                    "cancelled_today": row["cancelled_today"] or 0,
+                    "cancelled_month": row["cancelled_month"] or 0,
+                    "cancelled_total": row["cancelled_total"] or 0,
+                }
+
+            except Exception as e:
+                print(f"Error getting orders statistics: {e}")
+                return {"error": str(e)}
 
 
 class DBData:

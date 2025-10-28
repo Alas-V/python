@@ -1,3 +1,6 @@
+from datetime import datetime
+
+
 async def get_book_details(book_data: dict):
     rating = float(book_data.get("book_rating"))
     price = float(book_data.get("book_price"))
@@ -388,20 +391,39 @@ GENRES = {
 
 
 async def admin_all_statistic_text(stats: dict) -> str:
-    revenue_today = stats.get("revenue_today", 0)
-    revenue_month = stats.get("revenue_month", 0)
-    revenue_total = stats.get("revenue_total", 0)
+    # Текущая дата и время
+    current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    # Финансы
+    realized_revenue_today = stats.get("realized_revenue_today", 0)
+    realized_revenue_month = stats.get("realized_revenue_month", 0)
+    realized_revenue_total = stats.get("realized_revenue_total", 0)
+    expected_revenue_today = stats.get("expected_revenue_today", 0)
+    expected_revenue_month = stats.get("expected_revenue_month", 0)
+    expected_revenue_total = stats.get("expected_revenue_total", 0)
+
+    # Заказы
     orders_today = stats.get("orders_today", 0)
     orders_month = stats.get("orders_month", 0)
     orders_total = stats.get("orders_total", 0)
     delivering_orders = stats.get("delivering_orders", 0)
+    processing_orders = stats.get("processing_orders", 0)
+    completed_orders = stats.get("completed_orders", 0)
     cancelled_today = stats.get("cancelled_today", 0)
     cancelled_month = stats.get("cancelled_month", 0)
     cancelled_total = stats.get("cancelled_total", 0)
+
+    # Пользователи
     total_users = stats.get("total_users", 0)
     total_admins = stats.get("total_admins", 0)
+
+    # Книги
     total_books = stats.get("total_books", 0)
+    out_of_stock_books = stats.get("out_of_stock_books", 0)
+
+    # Обращения
     active_appeals = stats.get("active_appeals", 0)
+    critical_appeals = stats.get("critical_appeals", 0)
 
     # Админы по ролям
     admins_by_role = stats.get("admins_by_role", {})
@@ -418,17 +440,26 @@ async def admin_all_statistic_text(stats: dict) -> str:
         books_genre_text += f"    • {genre_ru}: {count}\n"
 
     text = f"""<b>📊 Общая статистика магазина</b>
+<i>Обновлено: {current_time}</i>
 
 <b>💰 Финансы:</b>
-    • Сегодня: {revenue_today} руб.
-    • За месяц: {revenue_month} руб.
-    • Всего: {revenue_total} руб.
+    • Реализованная выручка:
+      - Сегодня: {realized_revenue_today} руб.
+      - За месяц: {realized_revenue_month} руб.
+      - Всего: {realized_revenue_total} руб.
+    
+    • Ожидаемая выручка (в процессе):
+      - Сегодня: {expected_revenue_today} руб.
+      - За месяц: {expected_revenue_month} руб.
+      - Всего: {expected_revenue_total} руб.
 
 <b>📦 Заказы:</b>
     • Сегодня: {orders_today}
     • За месяц: {orders_month}
     • Всего: {orders_total}
+    • В обработке: {processing_orders}
     • В доставке: {delivering_orders}
+    • Доставлено: {completed_orders}
     • Отмены сегодня: {cancelled_today}
     • Отмены за месяц: {cancelled_month}
     • Всего отмен: {cancelled_total}
@@ -441,11 +472,103 @@ async def admin_all_statistic_text(stats: dict) -> str:
 
 <b>📚 Книги:</b>
     • Всего книг: {total_books}
+    • Закончилось: {out_of_stock_books}
     • По жанрам:
 {books_genre_text if books_genre_text else "    • Нет данных"}
 
 <b>🆘 Обращения в поддержку:</b>
-    • Активные обращения: {active_appeals}"""
+    • Активные обращения: {active_appeals}
+    • Критические обращения: {critical_appeals if critical_appeals > 0 else "Нет критических обращений"}"""
+    return text
+
+
+async def admin_format_order_details(order_details: dict) -> str:
+    order_id = order_details.get("order_id")
+    total_price = order_details.get("total_price", 0)
+    created_date = order_details.get("created_date")
+    status = order_details.get("status", "Неизвестен")
+    user_info = order_details.get("user", {})
+    address_info = order_details.get("address", {})
+    books = order_details.get("books", [])
+    if isinstance(created_date, datetime):
+        date_str = created_date.strftime("%d.%m.%Y %H:%M")
+    else:
+        date_str = "дата неизв."
+    username = user_info.get("username", "Не указан")
+    first_name = user_info.get("first_name", "Не указано")
+    telegram_id = user_info.get("telegram_id", "Не указан")
+    address_parts = []
+    if address_info.get("city"):
+        address_parts.append(f"🏙 {address_info['city']}")
+    if address_info.get("street"):
+        address_parts.append(f"улица {address_info['street']}")
+    if address_info.get("house"):
+        address_parts.append(f"д. {address_info['house']}")
+    if address_info.get("apartment"):
+        address_parts.append(f"кв. {address_info['apartment']}")
+    address_text = ", ".join(address_parts) if address_parts else "Не указан"
+    books_text = ""
+    total_items = 0
+    for i, book in enumerate(books, 1):
+        title = book.get("title", "Неизвестная книга")
+        price = book.get("price", 0)
+        quantity = book.get("quantity", 1)
+        total_items += quantity
+        books_text += f"{i}. {title}\n"
+        books_text += f"   └ {quantity} шт. × {price}₽ = {quantity * price}₽\n"
+    text = f"""<b>📦 Заказ #{order_id}</b>
+
+<b>📊 Общая информация:</b>
+├ ID заказа: <code>{order_id}</code>
+├ Статус: {status}
+├ Общая сумма: <b>{total_price}₽</b>
+├ Количество позиций: {len(books)}
+├ Общее количество товаров: {total_items}
+└ Дата создания: {date_str}
+
+<b>👤 Информация о покупателе:</b>
+├ Имя: {first_name}
+├ Username: @{username}
+└ Telegram ID: <code>{telegram_id}</code>
+
+<b>🏠 Адрес доставки:</b>
+├ Адрес: {address_text}
+├ Получатель: {address_info.get("name", "Не указан")}
+├ Телефон: {address_info.get("phone", "Не указан")}
+└ Комментарий: {address_info.get("comment", "Нет комментария")}
+
+<b>📚 Состав заказа:</b>
+{books_text if books_text else "   └ Нет информации о товарах"}"""
+    return text
+
+
+def admin_order_statistic(stats: dict) -> str:
+    current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
+    orders_today = stats.get("orders_today", 0)
+    orders_month = stats.get("orders_month", 0)
+    orders_total = stats.get("orders_total", 0)
+    delivering_orders = stats.get("delivering_orders", 0)
+    processing_orders = stats.get("processing_orders", 0)
+    completed_orders = stats.get("completed_orders", 0)
+    cancelled_today = stats.get("cancelled_today", 0)
+    cancelled_month = stats.get("cancelled_month", 0)
+    cancelled_total = stats.get("cancelled_total", 0)
+
+    text = f"""<b>🛒 УПРАВЛЕНИЕ ЗАКАЗАМИ</b>
+<i>Обновлено: {current_time}</i>
+
+<b>📦 Статистика заказов:</b>
+    • Сегодня: {orders_today}
+    • За месяц: {orders_month}
+    • Всего: {orders_total}
+    • В обработке: {processing_orders}
+    • В доставке: {delivering_orders}
+    • Доставлено: {completed_orders}
+    • Отмены сегодня: {cancelled_today}
+    • Отмены за месяц: {cancelled_month}
+    • Всего отмен: {cancelled_total}
+
+<b>Выберите действие:</b>"""
 
     return text
 

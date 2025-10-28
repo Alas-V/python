@@ -30,3 +30,8 @@ class AdminSupportState(StatesGroup):
     sending_appeal_id_for_find = State()
     sending_username_for_find = State()
     waiting_for_message = State()
+
+
+class AdminOrderState(StatesGroup):
+    waiting_order_id = State()
+    waiting_username = State()
