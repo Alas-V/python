@@ -54,7 +54,7 @@ class BookGenre(str, Enum):
 
 class OrderStatus(str, Enum):
     PROCESSING = "В обработке⌛"
-    DELIVERING = "🚚Доставляется"
+    DELIVERING = "В доставке🚚"
     COMPLETED = "Доставлен✅"
     CANCELLED = "Отменен❌"
 

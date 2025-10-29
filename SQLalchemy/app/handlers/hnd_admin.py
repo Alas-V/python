@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from middleware.mw_admin import AdminMiddleware
 from keyboards.kb_admin import KbAdmin
 from keyboards.kb_support import SupportKeyboards
+from keyboards.kb_order import OrderProcessing
 from queries.orm import AdminQueries, SupportQueries, StatisticsQueries
 from functools import wraps
 from typing import Union
@@ -17,7 +18,7 @@ from text_templates import (
     admin_format_order_details,
 )
 from utils.states import AdminSupportState, AdminOrderState
-from models import AppealStatus, AdminPermission
+from models import AppealStatus, AdminPermission, OrderStatus
 import asyncio
 from aiogram.exceptions import TelegramBadRequest
 from utils.admin_utils import PermissionChecker
@@ -56,6 +57,35 @@ def admin_required(handler):
         return await handler(event, *args, **kwargs)
 
     return wrapper
+
+
+async def send_user_msg(
+    bot: Bot, order_id: int, user_tg_id: int, status: OrderStatus
+) -> bool:
+    try:
+        status_messages = {
+            OrderStatus.PROCESSING: "🔄 Ваш заказ взят в обработку",
+            OrderStatus.DELIVERING: "🚚 Ваш заказ передан в доставку",
+            OrderStatus.COMPLETED: "✅ Ваш заказ успешно доставлен",
+            OrderStatus.CANCELLED: "❌ Ваш заказ был отменен",
+        }
+        message_text = (
+            f"📦 *Статус вашего заказа обновлён!*\n\n"
+            f"🆔 Номер заказа: *{order_id}*\n"
+            f"📊 Статус: *{status}*\n\n"
+            f"{status_messages.get(status, '')}\n\n"
+            f"📱 Следить за статусом заказа можно в разделе «Мои заказы»"
+        )
+        await bot.send_message(
+            chat_id=user_tg_id,
+            text=message_text,
+            parse_mode="Markdown",
+            reply_markup=await OrderProcessing.kb_open_order_user(order_id),
+        )
+        return True
+    except Exception as e:
+        print(f"Ошибка отправки уведомления пользователю {user_tg_id}: {e}")
+        return False
 
 
 @admin_router.callback_query(F.data == "admin_menu")
@@ -709,12 +739,78 @@ async def admin_view_order(
         text = await admin_format_order_details(order_details)
         await callback.message.edit_text(
             text=text,
-            reply_markup=await KbAdmin.kb_order_actions(order_id),
+            reply_markup=await KbAdmin.kb_order_actions(order_id, admin_permissions),
             parse_mode="HTML",
         )
     except Exception as e:
         print(f"Error in admin_view_order: {e}")
         await callback.answer("❌ Ошибка при загрузке заказа", show_alert=True)
+
+
+@admin_router.callback_query(F.data.startswith("admin_order_status_"))
+@admin_required
+async def admin_order_status_completed(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    order_id = int(callback.data.split("_")[-1])
+    status = callback.data.split("_")[-2]
+    await callback.message.edit_text(
+        text=f"Вы завершаете доставку заказ №{order_id}",
+        reply_markup=await KbAdmin.sure_to_change_status(order_id, status),
+    )
+
+
+@admin_router.callback_query(F.data.startswith("sure_change_status_"))
+@admin_required
+async def sure_change_status(
+    callback: CallbackQuery,
+    bot: Bot,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    status_dict = {
+        "processing": OrderStatus.PROCESSING,
+        "delivering": OrderStatus.DELIVERING,
+        "completed": OrderStatus.COMPLETED,
+        "cancelled": OrderStatus.CANCELLED,
+    }
+    parts = callback.data.split("_")
+    order_id = int(parts[-2])
+    new_status_key = parts[-1]
+    status = status_dict.get(new_status_key)
+    if not status:
+        await callback.answer("❌ Неизвестный статус", show_alert=True)
+        return
+    order_updated = await AdminQueries.get_order_new_status(order_id, status)
+    if order_updated:
+        order_data = await AdminQueries.get_order_details(order_id)
+        if not order_data:
+            await callback.answer("❌ Заказ не найден", show_alert=True)
+            return
+        user_info = order_data.get("user", {})
+        user_tg_id = user_info.get("telegram_id")
+        text = await admin_format_order_details(order_data)
+        await callback.answer("✅ Статус заказа изменен!", show_alert=True)
+        if user_tg_id:
+            send_msg_to_user = await send_user_msg(bot, order_id, user_tg_id, status)
+            if not send_msg_to_user:
+                await callback.answer(
+                    "⚠️ Статус изменен, но не удалось уведомить пользователя",
+                    show_alert=True,
+                )
+        await callback.message.edit_text(
+            text=text,
+            reply_markup=await KbAdmin.kb_order_actions(order_id, admin_permissions),
+            parse_mode="HTML",
+        )
+        return
+    await callback.answer("❌ Произошла ошибка при изменении статуса", show_alert=True)
 
 
 # admin_main_control_books

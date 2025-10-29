@@ -1108,10 +1108,23 @@ class OrderQueries:
                 "comment": order_data["comment"],
                 "items": items_text,
                 "items_list": items_list,
+                "telegram_id": telegram_id,
             }
 
 
 class AdminQueries:
+    @staticmethod
+    async def get_admins_with_permission(required_permission: AdminPermission) -> list:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Admin.telegram_id).where(
+                    Admin.permissions.op("&")(required_permission.value)
+                    == required_permission.value
+                )
+            )
+            admins = result.scalars().all()
+            return admins
+
     @staticmethod
     async def admin_visited(appeal_id: int):
         async with AsyncSessionLocal() as session:
@@ -1510,6 +1523,18 @@ class AdminQueries:
                 },
                 "books": books_info,
             }
+
+    @staticmethod
+    async def get_order_new_status(order_id: int, new_status) -> dict:
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                update(OrderData)
+                .where(OrderData.order_id == order_id)
+                .values(status=new_status)
+            )
+            await session.execute(stmt)
+            await session.commit()
+            return True
 
 
 class StatisticsQueries:

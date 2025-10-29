@@ -2,11 +2,13 @@ from aiogram import Bot, Router, F
 from aiogram.types import Message, CallbackQuery
 from utils.states import OrderForm
 from aiogram.fsm.context import FSMContext
-from queries.orm import OrderQueries, UserQueries, BookQueries
+from queries.orm import OrderQueries, UserQueries, BookQueries, AdminQueries
 from text_templates import order_data_structure, text_address_data
 from keyboards.kb_order import OrderProcessing
+from keyboards.kb_admin import KbAdmin
 from config import ADMIN_ID
 import asyncio
+from models import AdminPermission
 
 processing = Router()
 
@@ -50,7 +52,10 @@ async def format_products(cart_data) -> str:
     return "\n".join(products) if products else "Нет товаров"
 
 
-async def send_order_notification(bot: Bot, order_data: dict, order_id):
+async def send_order_notification(bot: Bot, order_data: dict, order_id: int):
+    comment = order_data.get("comment")
+    if comment is None:
+        comment = "Не указан"
     message_text = (
         "🛒 *НОВЫЙ ЗАКАЗ!*\n\n"
         f"👤 *Клиент:* {order_data['username']}\n"
@@ -59,15 +64,26 @@ async def send_order_notification(bot: Bot, order_data: dict, order_id):
         f"🏠 *Адрес:* {order_data['address']}\n"
         f"📦 *Товары:*\n{order_data['products']}\n"
         f"💰 *Сумма:* {order_data['total_price']}₽\n"
-        f"💬 *Комментарий:* {order_data['comment']}\n"
+        f"💬 *Комментарий:* {comment}\n"
         f"*Номер заказа* {order_id}"
     )
     try:
-        await bot.send_message(
-            chat_id=ADMIN_ID, text=message_text, parse_mode="Markdown"
+        admin_ids = await AdminQueries.get_admins_with_permission(
+            AdminPermission.MANAGE_ORDERS
         )
+        for admin_id in admin_ids:
+            try:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=message_text,
+                    parse_mode="Markdown",
+                    reply_markup=await KbAdmin.kb_open_order_for_admin(order_id),
+                )
+            except Exception as e:
+                print(f"Ошибка отправки уведомления админу {admin_id}: {e}")
+                continue
     except Exception as e:
-        print(f"Ошибка отправки уведомления: {e}")
+        print(f"Ошибка при получении списка админов: {e}")
 
 
 @processing.callback_query(F.data == "new_address")

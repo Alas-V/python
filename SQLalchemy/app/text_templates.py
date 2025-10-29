@@ -497,6 +497,9 @@ async def admin_format_order_details(order_details: dict) -> str:
     username = user_info.get("username", "Не указан")
     first_name = user_info.get("first_name", "Не указано")
     telegram_id = user_info.get("telegram_id", "Не указан")
+    comment = address_info.get("comment")
+    if comment is None:
+        comment = "Не указан"
     address_parts = []
     if address_info.get("city"):
         address_parts.append(f"🏙 {address_info['city']}")
@@ -535,7 +538,7 @@ async def admin_format_order_details(order_details: dict) -> str:
 ├ Адрес: {address_text}
 ├ Получатель: {address_info.get("name", "Не указан")}
 ├ Телефон: {address_info.get("phone", "Не указан")}
-└ Комментарий: {address_info.get("comment", "Нет комментария")}
+└ Комментарий: {comment}
 
 <b>📚 Состав заказа:</b>
 {books_text if books_text else "   └ Нет информации о товарах"}"""

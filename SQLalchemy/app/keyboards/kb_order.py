@@ -247,3 +247,16 @@ class OrderProcessing:
                 ],
             )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def kb_open_order_user(order_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📦 Открыть заказ",
+                        callback_data=f"order_detail_{order_id}",
+                    )
+                ]
+            ]
+        )

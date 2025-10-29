@@ -118,19 +118,25 @@ class KbAdmin:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
-    async def kb_order_actions(order_id: int) -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🚚 В доставку",
-                        callback_data=f"admin_order_status_delivering_{order_id}",
-                    ),
-                    InlineKeyboardButton(
-                        text="✅ Завершить",
-                        callback_data=f"admin_order_status_completed_{order_id}",
-                    ),
-                ],
+    async def kb_order_actions(
+        order_id: int, admin_permissions
+    ) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="🚚 В доставку",
+                    callback_data=f"admin_order_status_delivering_{order_id}",
+                ),
+                InlineKeyboardButton(
+                    text="✅ Завершить",
+                    callback_data=f"admin_order_status_completed_{order_id}",
+                ),
+            ],
+        ]
+        if PermissionChecker.has_permission(
+            admin_permissions, AdminPermission.VIEW_STATS
+        ):
+            keyboard.append(
                 [
                     InlineKeyboardButton(
                         text="📞 Связаться",
@@ -140,15 +146,59 @@ class KbAdmin:
                         text="❌ Отменить",
                         callback_data=f"admin_order_status_cancelled_{order_id}",
                     ),
+                ]
+            )
+        else:
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text="📞 Связаться",
+                        callback_data=f"admin_contact_user_{order_id}",
+                    ),
+                ]
+            )
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="🔙 К списку заказов",
+                    callback_data="admin_new_orders",
+                )
+            ],
+        )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def sure_to_change_status(order_id: int, status: str) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="✅ Изменить статус заказа",
+                        callback_data=f"sure_change_status_{order_id}_{status}",
+                    )
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🔙 Назад к списку заказов",
-                        callback_data="admin_new_orders",
+                        text="🔙 Назад ",
+                        callback_data=f"admin_view_order_{order_id}",
                     )
                 ],
             ]
         )
+
+    @staticmethod
+    async def kb_open_order_for_admin(order_id: int) -> InlineKeyboardMarkup:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="✅ Открыть заказ",
+                        callback_data=f"admin_view_order_{order_id}",
+                    )
+                ]
+            ]
+        )
+        return keyboard
 
     @staticmethod
     async def admin_agreement() -> InlineKeyboardMarkup:
