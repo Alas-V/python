@@ -35,3 +35,7 @@ class AdminSupportState(StatesGroup):
 class AdminOrderState(StatesGroup):
     waiting_order_id = State()
     waiting_username = State()
+
+
+class AdminReasonToCancellation(StatesGroup):
+    waiting_reason_to_cancellation = State()

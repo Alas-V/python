@@ -17,7 +17,7 @@ from text_templates import (
     admin_order_statistic,
     admin_format_order_details,
 )
-from utils.states import AdminSupportState, AdminOrderState
+from utils.states import AdminSupportState, AdminOrderState, AdminReasonToCancellation
 from models import AppealStatus, AdminPermission, OrderStatus
 import asyncio
 from aiogram.exceptions import TelegramBadRequest
@@ -60,27 +60,46 @@ def admin_required(handler):
 
 
 async def send_user_msg(
-    bot: Bot, order_id: int, user_tg_id: int, status: OrderStatus
+    bot: Bot,
+    order_id: int,
+    user_tg_id: int,
+    status: OrderStatus,
+    reason_to_cancellation=None,
 ) -> bool:
     try:
         status_messages = {
             OrderStatus.PROCESSING: "🔄 Ваш заказ взят в обработку",
             OrderStatus.DELIVERING: "🚚 Ваш заказ передан в доставку",
             OrderStatus.COMPLETED: "✅ Ваш заказ успешно доставлен",
-            OrderStatus.CANCELLED: "❌ Ваш заказ был отменен",
+            OrderStatus.CANCELLED: "❌ К сожалению, Ваш заказ был отменен, по причине: ",
         }
         message_text = (
-            f"📦 *Статус вашего заказа обновлён!*\n\n"
-            f"🆔 Номер заказа: *{order_id}*\n"
-            f"📊 Статус: *{status}*\n\n"
-            f"{status_messages.get(status, '')}\n\n"
-            f"📱 Следить за статусом заказа можно в разделе «Мои заказы»"
+            f"📦 *Статус вашего заказа обновлён!*\n\n🆔 Номер заказа: *{order_id}*\n"
         )
+        if status == OrderStatus.CANCELLED:
+            message_text += (
+                f"📊 Статус: *{status}*\n\n"
+                f"{status_messages.get(status, '')}\n{reason_to_cancellation}\n"
+                f"💰 Деньги за заказ были возвращены на Ваш счет внутри бота"
+                f"📨 При необходимости Вы можете обратиться в нашу службу поддержки"
+            )
+        elif status == OrderStatus.DELIVERING:
+            message_text += (
+                f"📊 Статус: *{status}*\n\n"
+                f"{status_messages.get(status, '')}\n\n"
+                f"📱 Следить за статусом заказа можно в разделе «Мои заказы»"
+            )
+        elif status == OrderStatus.COMPLETED:
+            message_text += (
+                f"📊 Статус: *{status}*\n\n"
+                f"{status_messages.get(status, '')}\n{reason_to_cancellation}\n"
+                f"need text here "
+            )
         await bot.send_message(
             chat_id=user_tg_id,
             text=message_text,
             parse_mode="Markdown",
-            reply_markup=await OrderProcessing.kb_open_order_user(order_id),
+            reply_markup=await OrderProcessing.kb_open_order_user(order_id, status),
         )
         return True
     except Exception as e:
@@ -417,7 +436,6 @@ async def admin_reply(
         )
         await callback.answer()
         return
-
     hint_message = await callback.message.answer(
         text="📝 Отправьте сообщение ниже, чтобы ответить пользователю"
     )
@@ -758,10 +776,24 @@ async def admin_order_status_completed(
 ):
     order_id = int(callback.data.split("_")[-1])
     status = callback.data.split("_")[-2]
-    await callback.message.edit_text(
-        text=f"Вы завершаете доставку заказ №{order_id}",
-        reply_markup=await KbAdmin.sure_to_change_status(order_id, status),
-    )
+    if status == "completed":
+        await callback.message.edit_text(
+            text=f"Вы завершаете доставку заказа №{order_id}",
+            reply_markup=await KbAdmin.sure_to_change_status(order_id, status),
+        )
+        return
+    elif status == "delivering":
+        await callback.message.edit_text(
+            text=f"Вы передаете заказ №{order_id} в доставку",
+            reply_markup=await KbAdmin.sure_to_change_status(order_id, status),
+        )
+        return
+    elif status == "cancelled":
+        await callback.message.edit_text(
+            text=f"Вы уверены что хотите отменить заказ №{order_id}",
+            reply_markup=await KbAdmin.sure_to_change_status(order_id, status),
+        )
+        return
 
 
 @admin_router.callback_query(F.data.startswith("sure_change_status_"))
@@ -813,11 +845,118 @@ async def sure_change_status(
     await callback.answer("❌ Произошла ошибка при изменении статуса", show_alert=True)
 
 
+@admin_router.callback_query(F.data.startswith("sure_canceled_order_"))
+@admin_required
+async def sure_canceled_order_(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    order_id = int(callback.data.split("_")[-1])
+    admin_id = int(callback.from_user.id)
+    main_message = await callback.message.edit_text(
+        text="Напишите причину отмены заказа\n (Причина отмены будет видна пользователю)"
+    )
+    await state.set_state(AdminReasonToCancellation.waiting_reason_to_cancellation)
+    await state.update_data(
+        order_id=order_id,
+        main_message_id=main_message.message_id,
+        admin_id=admin_id,
+        chat_id=callback.message.chat.id,
+    )
+
+
+@admin_router.callback_query(F.data == "cancellation_order_by_admin_with_reason")
+@admin_required
+async def cancellation_order_by_admin_with_reason(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    data = await state.get_data()
+    admin_id = data.het("ad,im_id")
+    order_id = data.get("order_id")
+    reason = data.get("reason")
+    status = await AdminQueries.get_order_status(order_id)
+    try:
+        if status == OrderStatus.CANCELLED or status == OrderStatus.COMPLETED:
+            await callback.answer(
+                text="Вы не можете отменить заказ, который уже был отменён или доставлен",
+                show_alert=True,
+            )
+            return
+        canceled = await AdminQueries.canceling_order_with_reason(
+            order_id, admin_id, reason
+        )
+        if canceled:
+            order_details = await AdminQueries.get_order_details(order_id)
+            if not order_details:
+                await callback.answer("❌ Заказ не найден", show_alert=True)
+                return
+            text = await admin_format_order_details(order_details)
+            await callback.message.edit_text(
+                text=text,
+                reply_markup=await KbAdmin.kb_order_actions(
+                    order_id, admin_permissions
+                ),
+                parse_mode="HTML",
+            )
+            await callback.answer(text="Заказ успешно отменён", show_alert=True)
+            return
+        await callback.answer(
+            text="Произошла ошибка, попробуйте ещё раз", show_alert=True
+        )
+    except Exception as e:
+        print(f"Error in admin_view_order: {e}")
+        await callback.answer("❌ Ошибка при загрузке заказа", show_alert=True)
+
+
 # admin_main_control_books
 # admin_main_control_admins
 
 
 # FMScontext hnd
+@admin_router.message(AdminReasonToCancellation.waiting_reason_to_cancellation, F.text)
+@admin_required
+async def reason_to_cancellation(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    chat_id = data.get("chat_id")
+    admin_id = data.het("ad,im_id")
+    order_id = data.get("order_id")
+    reason = message.text.strip()
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение пользователя: {e}")
+    try:
+        main_message = await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=main_message_id,
+            text=f"✅ Заказ №{order_id} будет отменён.\n📝 Причина: {reason}",
+            reply_markup=await KbAdmin.cancel_order_by_admin_with_reason(order_id),
+        )
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            order_id=order_id,
+            reason=reason,
+            admin_id=admin_id,
+        )
+    except Exception as e:
+        print(f"Ошибка при обработке отмены заказа: {e}")
+
+
 @admin_router.message(AdminSupportState.message_from_support, F.text)
 @admin_required
 async def message_from_support(

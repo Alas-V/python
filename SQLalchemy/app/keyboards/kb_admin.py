@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from utils.admin_utils import PermissionChecker
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from models import AdminPermission, AppealStatus
+from models import AdminPermission, AppealStatus, OrderStatus
 from datetime import datetime
 
 status_dict = {
@@ -91,6 +91,16 @@ class KbAdmin:
             ],
             [
                 InlineKeyboardButton(
+                    text="🚚 Заказы в доставке", callback_data="admin_delivering_orders"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отменные заказы", callback_data="admin_canceled_orders"
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="🔍 Поиск по номеру заказа",
                     callback_data="admin_orders_find_by_id",
                 )
@@ -169,19 +179,48 @@ class KbAdmin:
 
     @staticmethod
     async def sure_to_change_status(order_id: int, status: str) -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад ",
+                    callback_data=f"admin_view_order_{order_id}",
+                )
+            ],
+        ]
+        if status == OrderStatus.CANCELLED:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="✅ Изменить статус заказа",
+                        callback_data=f"sure_canceled_order_{order_id}",
+                    )
+                ],
+            )
+        if status == OrderStatus.DELIVERING:
+            keyboard.insert(
+                0,
                 [
                     InlineKeyboardButton(
                         text="✅ Изменить статус заказа",
                         callback_data=f"sure_change_status_{order_id}_{status}",
                     )
                 ],
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def cancel_order_by_admin_with_reason(order_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="🔙 Назад ",
-                        callback_data=f"admin_view_order_{order_id}",
-                    )
+                        "🔙 Назад", callback_data=f"admin_view_order_{order_id}"
+                    ),
+                    InlineKeyboardButton(
+                        text="✅ Отменит заказ",
+                        callback_data="cancellation_order_by_admin_with_reason",
+                    ),
                 ],
             ]
         )

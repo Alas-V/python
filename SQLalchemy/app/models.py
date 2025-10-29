@@ -241,6 +241,10 @@ class OrderData(Base):
     status: Mapped[OrderStatus] = mapped_column(
         String(20), nullable=False, default=OrderStatus.PROCESSING
     )
+    reason_to_cancellation: Mapped[Optional[str]] = mapped_column(
+        String(200), nullable=True
+    )
+    admin_id_who_canceled: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     user: Mapped["User"] = relationship(back_populates="order_data")
 
 

@@ -1,4 +1,5 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from models import OrderStatus
 
 
 class OrderProcessing:
@@ -249,14 +250,29 @@ class OrderProcessing:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
-    async def kb_open_order_user(order_id: int) -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
+    async def kb_open_order_user(order_id: int, status) -> InlineKeyboardMarkup:
+        keyboard = []
+        if status == OrderStatus.DELIVERING:
+            keyboard.append(
                 [
                     InlineKeyboardButton(
                         text="📦 Открыть заказ",
                         callback_data=f"order_detail_{order_id}",
-                    )
+                    ),
+                    InlineKeyboardButton(
+                        text="📨 Поддержка",
+                        callback_data="support",
+                    ),
                 ]
-            ]
-        )
+            )
+        if status == OrderStatus.COMPLETED or status == OrderStatus.CANCELLED:
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text="📨 Поддержка",
+                        callback_data="support",
+                    ),
+                    InlineKeyboardButton(text="🔙Меню", callback_data="main_menu"),
+                ]
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)

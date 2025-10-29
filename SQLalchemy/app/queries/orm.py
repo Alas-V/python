@@ -1169,6 +1169,29 @@ class AdminQueries:
             return result.scalar()
 
     @staticmethod
+    async def get_order_status(order_id: int) -> str:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(OrderData.status).where(OrderData.order_id == order_id)
+            )
+            return result.scalar()
+
+    @staticmethod
+    async def canceling_order_with_reason(order_id: int, admin_id: int, reason) -> bool:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(OrderData)
+                .where(OrderData.order_id == order_id)
+                .values(
+                    status=OrderStatus.CANCELLED,
+                    admin_id_who_canceled=admin_id,
+                    reason_to_cancellation=reason,
+                )
+            )
+            await session.commit()
+            return True
+
+    @staticmethod
     async def count_appeals_in_work(admin_id: int) -> int:
         async with AsyncSessionLocal() as session:
             result = await session.execute(
