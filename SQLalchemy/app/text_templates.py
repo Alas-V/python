@@ -1,4 +1,5 @@
 from datetime import datetime
+from models import OrderStatus
 
 
 async def get_book_details(book_data: dict):
@@ -490,6 +491,9 @@ async def admin_format_order_details(order_details: dict) -> str:
     user_info = order_details.get("user", {})
     address_info = order_details.get("address", {})
     books = order_details.get("books", [])
+    reason_to_cancellation = order_details.get("reason_to_cancellation")
+    admin_name = order_details.get("admin_name")
+    admin_id = order_details.get("admin_id_who_canceled")
     if isinstance(created_date, datetime):
         date_str = created_date.strftime("%d.%m.%Y %H:%M")
     else:
@@ -519,6 +523,17 @@ async def admin_format_order_details(order_details: dict) -> str:
         total_items += quantity
         books_text += f"{i}. {title}\n"
         books_text += f"   └ {quantity} шт. × {price}₽ = {quantity * price}₽\n"
+    cancellation_info = ""
+    if status == OrderStatus.CANCELLED and reason_to_cancellation:
+        admin_display = (
+            f"{admin_name} (ID: {admin_id})" if admin_name else f"ID: {admin_id}"
+        )
+        cancellation_info = f"""
+<b>❌ Информация об отмене:</b>
+├ Причина: {reason_to_cancellation}
+└ Отменил администратор: {admin_display}
+"""
+
     text = f"""<b>📦 Заказ #{order_id}</b>
 
 <b>📊 Общая информация:</b>
@@ -542,6 +557,8 @@ async def admin_format_order_details(order_details: dict) -> str:
 
 <b>📚 Состав заказа:</b>
 {books_text if books_text else "   └ Нет информации о товарах"}"""
+    if cancellation_info:
+        text += cancellation_info
     return text
 
 

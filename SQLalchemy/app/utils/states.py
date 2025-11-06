@@ -39,3 +39,4 @@ class AdminOrderState(StatesGroup):
 
 class AdminReasonToCancellation(StatesGroup):
     waiting_reason_to_cancellation = State()
+    waiting_confirmation = State()

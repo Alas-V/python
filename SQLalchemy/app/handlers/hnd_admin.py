@@ -6,7 +6,13 @@ from middleware.mw_admin import AdminMiddleware
 from keyboards.kb_admin import KbAdmin
 from keyboards.kb_support import SupportKeyboards
 from keyboards.kb_order import OrderProcessing
-from queries.orm import AdminQueries, SupportQueries, StatisticsQueries
+from queries.orm import (
+    AdminQueries,
+    SupportQueries,
+    StatisticsQueries,
+    BookQueries,
+    OrderQueries,
+)
 from functools import wraps
 from typing import Union
 from text_templates import (
@@ -659,14 +665,12 @@ async def admin_main_orders(
         return
     try:
         order_stats = await StatisticsQueries.orders_statistic()
-
         if "error" in order_stats:
             await callback.message.edit_text(
                 "❌ Ошибка при получении статистики заказов",
                 reply_markup=await KbAdmin.kb_admin_main_order(admin_permissions),
             )
             return
-
         text = admin_order_statistic(order_stats)
         await callback.message.edit_text(
             text=text,
@@ -755,9 +759,12 @@ async def admin_view_order(
             await callback.answer("❌ Заказ не найден", show_alert=True)
             return
         text = await admin_format_order_details(order_details)
+        status = await AdminQueries.get_order_status(order_id)
         await callback.message.edit_text(
             text=text,
-            reply_markup=await KbAdmin.kb_order_actions(order_id, admin_permissions),
+            reply_markup=await KbAdmin.kb_order_actions(
+                order_id, admin_permissions, status
+            ),
             parse_mode="HTML",
         )
     except Exception as e:
@@ -838,7 +845,9 @@ async def sure_change_status(
                 )
         await callback.message.edit_text(
             text=text,
-            reply_markup=await KbAdmin.kb_order_actions(order_id, admin_permissions),
+            reply_markup=await KbAdmin.kb_order_actions(
+                order_id, admin_permissions, status
+            ),
             parse_mode="HTML",
         )
         return
@@ -855,9 +864,12 @@ async def sure_canceled_order_(
     admin_name: str,
 ):
     order_id = int(callback.data.split("_")[-1])
-    admin_id = int(callback.from_user.id)
+    admin_tg_id = int(callback.from_user.id)
+    admin = await AdminQueries.get_admin_by_telegram_id(admin_tg_id)
+    admin_id = admin.admin_id
     main_message = await callback.message.edit_text(
-        text="Напишите причину отмены заказа\n (Причина отмены будет видна пользователю)"
+        text="Напишите причину отмены заказа\n (Причина отмены будет видна пользователю)",
+        reply_markup=await KbAdmin.need_reason_to_cancel(order_id),
     )
     await state.set_state(AdminReasonToCancellation.waiting_reason_to_cancellation)
     await state.update_data(
@@ -873,12 +885,13 @@ async def sure_canceled_order_(
 async def cancellation_order_by_admin_with_reason(
     callback: CallbackQuery,
     state: FSMContext,
+    bot: Bot,
     is_admin: bool,
     admin_permissions: int,
     admin_name: str,
 ):
     data = await state.get_data()
-    admin_id = data.het("ad,im_id")
+    admin_id = data.get("admin_id")
     order_id = data.get("order_id")
     reason = data.get("reason")
     status = await AdminQueries.get_order_status(order_id)
@@ -898,14 +911,43 @@ async def cancellation_order_by_admin_with_reason(
                 await callback.answer("❌ Заказ не найден", show_alert=True)
                 return
             text = await admin_format_order_details(order_details)
+            status = await AdminQueries.get_order_status(order_id)
             await callback.message.edit_text(
                 text=text,
                 reply_markup=await KbAdmin.kb_order_actions(
-                    order_id, admin_permissions
+                    order_id, admin_permissions, status
                 ),
                 parse_mode="HTML",
             )
             await callback.answer(text="Заказ успешно отменён", show_alert=True)
+            user_info = order_details.get("user", {})
+            user_telegram_id = user_info.get("telegram_id")
+            order_price = order_details.get("total_price")
+            await OrderQueries.get_user_money_back(user_telegram_id, order_price)
+            book_data = order_details.get("books")
+            books = []
+            for book in book_data:
+                book_id = book.get("book_id")
+                quantity = book.get("quantity")
+                books.append((book_id, quantity))
+            await BookQueries.add_books_back_when_canceled_order(books)
+            if user_telegram_id:
+                send_msg_to_user = await send_user_msg(
+                    bot, order_id, user_telegram_id, status, reason
+                )
+                if not send_msg_to_user:
+                    await callback.answer(
+                        "⚠️ Статус изменен, но не удалось уведомить пользователя",
+                        show_alert=True,
+                    )
+            else:
+                print(
+                    f"Не удалось получить telegram_id пользователя для заказа {order_id}"
+                )
+                await callback.answer(
+                    "⚠️ Статус изменен, но не удалось найти пользователя для уведомления",
+                    show_alert=True,
+                )
             return
         await callback.answer(
             text="Произошла ошибка, попробуйте ещё раз", show_alert=True
@@ -933,7 +975,7 @@ async def reason_to_cancellation(
     data = await state.get_data()
     main_message_id = data.get("main_message_id")
     chat_id = data.get("chat_id")
-    admin_id = data.het("ad,im_id")
+    admin_id = data.get("admin_id")
     order_id = data.get("order_id")
     reason = message.text.strip()
     try:

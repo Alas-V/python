@@ -129,23 +129,28 @@ class KbAdmin:
 
     @staticmethod
     async def kb_order_actions(
-        order_id: int, admin_permissions
+        order_id: int, admin_permissions, status
     ) -> InlineKeyboardMarkup:
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    text="🚚 В доставку",
-                    callback_data=f"admin_order_status_delivering_{order_id}",
-                ),
-                InlineKeyboardButton(
-                    text="✅ Завершить",
-                    callback_data=f"admin_order_status_completed_{order_id}",
-                ),
-            ],
-        ]
-        if PermissionChecker.has_permission(
-            admin_permissions, AdminPermission.VIEW_STATS
-        ):
+        keyboard = []
+        if status == OrderStatus.PROCESSING:
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text="🚚 В доставку",
+                        callback_data=f"admin_order_status_delivering_{order_id}",
+                    )
+                ]
+            )
+        if status == OrderStatus.DELIVERING:
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text="✅ Завершить",
+                        callback_data=f"admin_order_status_completed_{order_id}",
+                    )
+                ]
+            )
+        if status != OrderStatus.CANCELLED:
             keyboard.append(
                 [
                     InlineKeyboardButton(
@@ -154,7 +159,7 @@ class KbAdmin:
                     ),
                     InlineKeyboardButton(
                         text="❌ Отменить",
-                        callback_data=f"admin_order_status_cancelled_{order_id}",
+                        callback_data=f"sure_canceled_order_{order_id}",
                     ),
                 ]
             )
@@ -170,8 +175,8 @@ class KbAdmin:
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    text="🔙 К списку заказов",
-                    callback_data="admin_new_orders",
+                    text="🔙 В меню заказов",
+                    callback_data="admin_main_orders",
                 )
             ],
         )
@@ -197,7 +202,7 @@ class KbAdmin:
                     )
                 ],
             )
-        if status == OrderStatus.DELIVERING:
+        else:
             keyboard.insert(
                 0,
                 [
@@ -215,13 +220,25 @@ class KbAdmin:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        "🔙 Назад", callback_data=f"admin_view_order_{order_id}"
+                        text="🔙 Назад", callback_data=f"admin_view_order_{order_id}"
                     ),
                     InlineKeyboardButton(
                         text="✅ Отменит заказ",
                         callback_data="cancellation_order_by_admin_with_reason",
                     ),
                 ],
+            ]
+        )
+
+    @staticmethod
+    async def need_reason_to_cancel(order_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data=f"admin_view_order_{order_id}"
+                    )
+                ]
             ]
         )
 

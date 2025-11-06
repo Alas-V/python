@@ -276,6 +276,23 @@ class BookQueries:
                     all_available = False
             return all_available, insufficient_books
 
+    @staticmethod
+    async def add_books_back_when_canceled_order(books: list):
+        async with AsyncSessionLocal() as session:
+            for book_id, quantity in books:
+                result = await session.execute(
+                    select(Book.book_quantity).where(Book.book_id == book_id)
+                )
+                current_quantity = result.scalar_one_or_none()
+                if current_quantity is not None:
+                    await session.execute(
+                        update(Book)
+                        .where(Book.book_id == book_id)
+                        .values(book_quantity=Book.book_quantity + quantity)
+                    )
+                await session.flush()
+            await session.commit()
+
 
 class SaleQueries:
     @staticmethod
@@ -1111,6 +1128,21 @@ class OrderQueries:
                 "telegram_id": telegram_id,
             }
 
+    @staticmethod
+    async def get_user_money_back(user_telegram_id: int, amount_money: int):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User.user_balance).where(User.telegram_id == user_telegram_id)
+            )
+            current_balance = result.scalar_one_or_none()
+            if current_balance is not None:
+                await session.execute(
+                    update(User)
+                    .where(User.telegram_id == user_telegram_id)
+                    .values(user_balance=User.user_balance + amount_money)
+                )
+            await session.commit()
+
 
 class AdminQueries:
     @staticmethod
@@ -1489,10 +1521,14 @@ class AdminQueries:
                     OrderData.book_id,
                     OrderData.quantity,
                     OrderData.status,
+                    OrderData.reason_to_cancellation,
+                    OrderData.admin_id_who_canceled,
+                    Admin.name.label("admin_name"),
+                    Admin.admin_id,
                     User.username,
                     User.user_first_name,
                     User.telegram_id,
-                    UserAddress.name,
+                    UserAddress.name.label("address_name"),
                     UserAddress.phone,
                     UserAddress.city,
                     UserAddress.street,
@@ -1503,6 +1539,7 @@ class AdminQueries:
                 .where(OrderData.order_id == order_id)
                 .join(User, User.telegram_id == OrderData.telegram_id)
                 .join(UserAddress, UserAddress.address_id == OrderData.address_id)
+                .outerjoin(Admin, OrderData.admin_id_who_canceled == Admin.admin_id)
             )
             order = result.mappings().first()
             if not order:
@@ -1520,6 +1557,7 @@ class AdminQueries:
                         quantity = order.quantity[i] if i < len(order.quantity) else 1
                         books_info.append(
                             {
+                                "book_id": book_id,
                                 "title": book.book_title,
                                 "price": book.book_price,
                                 "quantity": quantity,
@@ -1530,13 +1568,17 @@ class AdminQueries:
                 "total_price": order.price,
                 "created_date": order.created_date,
                 "status": order.status,
+                "reason_to_cancellation": order.reason_to_cancellation,
+                "admin_id_who_canceled": order.admin_id_who_canceled,
+                "admin_name": order.admin_name,
+                "admin_id": order.admin_id,
                 "user": {
                     "username": order.username,
                     "first_name": order.user_first_name,
                     "telegram_id": order.telegram_id,
                 },
                 "address": {
-                    "name": order.name,
+                    "name": order.address_name,
                     "phone": order.phone,
                     "city": order.city,
                     "street": order.street,
@@ -1983,8 +2025,18 @@ class DBData:
                 price=1000,
             )
             session.add(cart_item)
-
-            print("🔄 Создание тестовых обращений поддержки...")
+            address = UserAddress(
+                address_id=1,
+                telegram_id=717149416,
+                name="Артём",
+                phone="89139999957",
+                city="Москва",
+                street="Бронный переулок",
+                house="1",
+                apartment="234",
+                is_complete=True,
+            )
+            session.add(address)
 
             # # Получаем всех пользователей и админов
             # all_users_result = await session.execute(select(User))
