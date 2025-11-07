@@ -87,7 +87,7 @@ async def send_user_msg(
                 f"📊 Статус: *{status}*\n\n"
                 f"{status_messages.get(status, '')}\n{reason_to_cancellation}\n"
                 f"💰 Деньги за заказ были возвращены на Ваш счет внутри бота"
-                f"📨 При необходимости Вы можете обратиться в нашу службу поддержки"
+                f"\n📨 При необходимости Вы можете обратиться в нашу службу поддержки"
             )
         elif status == OrderStatus.DELIVERING:
             message_text += (
@@ -684,29 +684,38 @@ async def admin_main_orders(
         )
 
 
-@admin_router.callback_query(F.data == "admin_new_orders")
+@admin_router.callback_query(F.data.startswith("admin_orders_"))
 @admin_required
-async def admin_new_orders(
+async def admin_orders(
     callback: CallbackQuery,
     state: FSMContext,
     is_admin: bool,
     admin_permissions: int,
     admin_name: str,
 ):
+    order_type = str(callback.data.split("_")[-1])
     try:
         page = 0
-        total_count = await AdminQueries.get_new_orders_count()
-        orders_data = await AdminQueries.get_new_orders_paginated(page=page)
+        total_count = await AdminQueries.get_admin_orders_count(order_type)
+        orders_data = await AdminQueries.get_admin_orders_paginated(
+            order_type, page=page
+        )
         if not orders_data:
             await callback.answer(
-                text="❌ Нет новых заказов",
+                text="❌ Нет заказов",
                 show_alert=True,
             )
             return
+        order_type_text = {
+            "new": f"🆕 <b>Новые заказы</b>\n\n📋 Найдено новых заказов: {total_count}",
+            "delivering": f"🚚 <b>Заказы в доставке</b>\n\n📋 Найдено заказов в доставке: {total_count}",
+            "completed": f"📫 <b>Доставленные заказы</b>\n\n📋 Найдено доставленных заказов: {total_count}",
+            "canceled": f"❌ <b>Отменённые заказы</b>\n\n📋 Найдено отменённых заказов: {total_count}",
+        }
         await callback.message.edit_text(
-            text=f"🆕 <b>Новые заказы</b>\n\n📋 Найдено новых заказов: {total_count}",
-            reply_markup=await KbAdmin.kb_admin_new_orders(
-                orders_data=orders_data, page=page, total_count=total_count
+            text=order_type_text.get(order_type),
+            reply_markup=await KbAdmin.kb_admin_find_orders(
+                order_type, orders_data=orders_data, page=page, total_count=total_count
             ),
             parse_mode="HTML",
         )
@@ -715,7 +724,7 @@ async def admin_new_orders(
         await callback.answer("❌ Ошибка при загрузке новых заказов", show_alert=True)
 
 
-@admin_router.callback_query(F.data.startswith("admin_new_orders_page_"))
+@admin_router.callback_query(F.data.startswith("page_admin_orders_"))
 @admin_required
 async def admin_new_orders_pagination(
     callback: CallbackQuery,
@@ -726,15 +735,24 @@ async def admin_new_orders_pagination(
 ):
     try:
         page = int(callback.data.split("_")[-1])
-        total_count = await AdminQueries.get_new_orders_count()
-        orders_data = await AdminQueries.get_new_orders_paginated(page=page)
+        order_type = str(callback.data.split("_")[-2])
+        total_count = await AdminQueries.get_admin_orders_count(order_type)
+        orders_data = await AdminQueries.get_admin_orders_paginated(
+            order_type, page=page
+        )
         if not orders_data:
             await callback.answer("Больше заказов нет", show_alert=True)
             return
+        order_type_text = {
+            "new": f"🆕 <b>Новые заказы</b>\n\n📋 Найдено новых заказов: {total_count}",
+            "delivering": f"🚚 <b>Заказы в доставке</b>\n\n📋 Найдено заказов в доставке: {total_count}",
+            "completed": f"📫 <b>Доставленные заказы</b>\n\n📋 Найдено доставленных заказов: {total_count}",
+            "canceled": f"❌ <b>Отменённые заказы</b>\n\n📋 Найдено отменённых заказов: {total_count}",
+        }
         await callback.message.edit_text(
-            text=f"🆕 <b>Новые заказы</b>\n\n📋 Найдено новых заказов: {total_count}",
-            reply_markup=await KbAdmin.kb_admin_new_orders(
-                orders_data=orders_data, page=page, total_count=total_count
+            text=order_type_text.get(order_type),
+            reply_markup=await KbAdmin.kb_admin_find_orders(
+                order_type, orders_data=orders_data, page=page, total_count=total_count
             ),
             parse_mode="HTML",
         )

@@ -86,29 +86,35 @@ class KbAdmin:
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="🆕 Новые заказы", callback_data="admin_new_orders"
+                    text="🆕 Новые заказы", callback_data="admin_orders_new"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="🚚 Заказы в доставке", callback_data="admin_delivering_orders"
+                    text="🚚 Заказы в доставке", callback_data="admin_orders_delivering"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="❌ Отменные заказы", callback_data="admin_canceled_orders"
+                    text="📫 Доставленные заказы",
+                    callback_data="admin_orders_completed",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отменные заказы", callback_data="admin_orders_canceled"
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="🔍 Поиск по номеру заказа",
-                    callback_data="admin_orders_find_by_id",
+                    callback_data="admin_find_orders_by_id",
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="👤 Поиск по @username",
-                    callback_data="admin_orders_find_by_username",
+                    callback_data="admin_find_orders_by_username",
                 )
             ],
         ]
@@ -150,7 +156,7 @@ class KbAdmin:
                     )
                 ]
             )
-        if status != OrderStatus.CANCELLED:
+        if status != OrderStatus.CANCELLED or status != OrderStatus.COMPLETED:
             keyboard.append(
                 [
                     InlineKeyboardButton(
@@ -427,8 +433,12 @@ class KbAdmin:
         )
 
     @staticmethod
-    async def kb_admin_new_orders(
-        orders_data: list, page: int = 0, total_count: int = 0, items_per_page: int = 10
+    async def kb_admin_find_orders(
+        order_type: str,
+        orders_data: list,
+        page: int = 0,
+        total_count: int = 0,
+        items_per_page: int = 10,
     ) -> InlineKeyboardMarkup:
         builder = InlineKeyboardBuilder()
         for order in orders_data:
@@ -460,7 +470,7 @@ class KbAdmin:
                 pagination_buttons.append(
                     InlineKeyboardButton(
                         text="⬅️ Назад",
-                        callback_data=f"admin_new_orders_page_{page - 1}",
+                        callback_data=f"page_admin_orders_{order_type}_{page - 1}",
                     )
                 )
             pagination_buttons.append(
@@ -472,7 +482,7 @@ class KbAdmin:
                 pagination_buttons.append(
                     InlineKeyboardButton(
                         text="Вперед ➡️",
-                        callback_data=f"admin_new_orders_page_{page + 1}",
+                        callback_data=f"page_admin_orders_{order_type}_{page + 1}",
                     )
                 )
             builder.row(*pagination_buttons)

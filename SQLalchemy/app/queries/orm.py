@@ -31,6 +31,14 @@ from typing import Optional
 fake = Faker("ru_RU")
 
 
+order_type_to_admin_orders_dict = {
+    "new": OrderStatus.PROCESSING,
+    "delivering": OrderStatus.DELIVERING,
+    "completed": OrderStatus.COMPLETED,
+    "canceled": OrderStatus.CANCELLED,
+}
+
+
 class AuthorQueries:
     @staticmethod
     async def add_author():
@@ -1481,17 +1489,22 @@ class AdminQueries:
             return result.scalar_one_or_none() is not None
 
     @staticmethod
-    async def get_new_orders_count() -> int:
+    async def get_admin_orders_count(order_type: str) -> int:
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(func.count(OrderData.order_id)).where(
-                    OrderData.status == OrderStatus.PROCESSING
+                    OrderData.status
+                    == order_type_to_admin_orders_dict.get(
+                        order_type
+                    )  # dict on top of the all orm
                 )
             )
             return result.scalar() or 0
 
     @staticmethod
-    async def get_new_orders_paginated(page: int = 0, items_per_page: int = 10) -> list:
+    async def get_admin_orders_paginated(
+        order_type: str, page: int = 0, items_per_page: int = 10
+    ) -> list:
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(
@@ -1502,7 +1515,9 @@ class AdminQueries:
                     User.username,
                     User.user_first_name,
                 )
-                .where(OrderData.status == OrderStatus.PROCESSING)
+                .where(
+                    OrderData.status == order_type_to_admin_orders_dict.get(order_type)
+                )
                 .join(User, User.telegram_id == OrderData.telegram_id)
                 .order_by(OrderData.created_date.desc())
                 .offset(page * items_per_page)
