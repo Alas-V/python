@@ -79,25 +79,31 @@ async def send_user_msg(
             OrderStatus.COMPLETED: "✅ Ваш заказ успешно доставлен",
             OrderStatus.CANCELLED: "❌ К сожалению, Ваш заказ был отменен, по причине: ",
         }
+        status_head = {
+            OrderStatus.PROCESSING: "В обработке",
+            OrderStatus.DELIVERING: "Передан в доставку",
+            OrderStatus.COMPLETED: "Доставлен",
+            OrderStatus.CANCELLED: "Отменён",
+        }
         message_text = (
             f"📦 *Статус вашего заказа обновлён!*\n\n🆔 Номер заказа: *{order_id}*\n"
         )
         if status == OrderStatus.CANCELLED:
             message_text += (
-                f"📊 Статус: *{status}*\n\n"
+                f"📊 Статус: *{status_head.get(status)}*\n\n"
                 f"{status_messages.get(status, '')}\n{reason_to_cancellation}\n"
                 f"💰 Деньги за заказ были возвращены на Ваш счет внутри бота"
                 f"\n📨 При необходимости Вы можете обратиться в нашу службу поддержки"
             )
         elif status == OrderStatus.DELIVERING:
             message_text += (
-                f"📊 Статус: *{status}*\n\n"
+                f"📊 Статус: *{status_head.get(status)}*\n\n"
                 f"{status_messages.get(status, '')}\n\n"
                 f"📱 Следить за статусом заказа можно в разделе «Мои заказы»"
             )
         elif status == OrderStatus.COMPLETED:
             message_text += (
-                f"📊 Статус: *{status}*\n\n"
+                f"📊 Статус: *{status_head.get(status)}*\n\n"
                 f"{status_messages.get(status, '')}\n{reason_to_cancellation}\n"
                 f"need text here "
             )
@@ -652,6 +658,7 @@ async def admin_statistics(
 async def admin_main_orders(
     callback: CallbackQuery,
     state: FSMContext,
+    bot: Bot,
     is_admin: bool,
     admin_permissions: int,
     admin_name: str,
@@ -663,6 +670,15 @@ async def admin_main_orders(
             "❌ У вас нет прав для управления заказами", show_alert=True
         )
         return
+    data = await state.get_data()
+    old_hint = data.get("last_hint_id", [])
+    if old_hint:
+        try:
+            await bot.delete_message(
+                chat_id=callback.message.chat.id, message_id=old_hint
+            )
+        except Exception as e:
+            print(f"Не удалось удалить старое сообщение: {e}")
     try:
         order_stats = await StatisticsQueries.orders_statistic()
         if "error" in order_stats:
@@ -973,6 +989,91 @@ async def cancellation_order_by_admin_with_reason(
     except Exception as e:
         print(f"Error in admin_view_order: {e}")
         await callback.answer("❌ Ошибка при загрузке заказа", show_alert=True)
+
+
+# not_need
+# @admin_router.callback_query(F.data == "admin_find_orders_by_id")
+# @admin_required
+# async def admin_find_orders_by_id(
+#     callback: CallbackQuery,
+#     state: FSMContext,
+#     is_admin: bool,
+#     admin_permissions: int,
+#     admin_name: str,
+# ):
+#     main_message = await callback.message.edit_text(
+#         text="Введите номер заказа для поиска",
+#         reply_markup=await KbAdmin.get_back_to_order_menu(),
+#     )
+#     await state.set_state(AdminOrderState.waiting_order_id)
+#     await state.update_data(
+#         main_message_id=main_message.message_id,
+#         chat_id=callback.message.chat.id,
+#     )
+
+
+@admin_router.callback_query(F.data.startswith("admin_find_orders_by_"))
+@admin_required
+async def admin_find_orders_by(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    by_what = str(callback.data.split("_")[-1])
+    if by_what == "id":
+        main_message = await callback.message.edit_text(
+            text="Введите номер заказа для поиска",
+            reply_markup=await KbAdmin.get_back_to_order_menu(),
+        )
+        await state.set_state(AdminOrderState.waiting_order_id)
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            chat_id=callback.message.chat.id,
+        )
+        return
+    main_message = await callback.message.edit_text(
+        text="Введите username пользователя для поиска заказов",
+        reply_markup=await KbAdmin.get_back_to_order_menu(),
+    )
+    await state.set_state(AdminOrderState.waiting_username)
+    await state.update_data(
+        main_message_id=main_message.message_id,
+        chat_id=callback.message.chat.id,
+    )
+    return
+
+
+@admin_router.callback_query(F.data.startswith("page_admin_find_by_username_orders_"))
+@admin_required
+async def page_admin_find_by_username_orders(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        page = int(callback.data.split("_")[-1])
+        username = str(callback.data.split("_")[-2])
+        telegram_id = await AdminQueries.get_telegram_id_by_username(username)
+        total_count = await AdminQueries.get_admin_orders_count_telegram_id(telegram_id)
+        orders_data = await AdminQueries.admin_get_user_orders_by_telegram_id_small(
+            telegram_id, page=page
+        )
+        if not orders_data:
+            await callback.answer("Больше заказов нет", show_alert=True)
+            return
+        await callback.message.edit_text(
+            text=f"Все {total_count} заказы пользователя {username}",
+            reply_markup=await KbAdmin.kb_admin_find_orders_by_username(
+                orders_data=orders_data, page=page, total_count=total_count
+            ),
+        )
+    except Exception as e:
+        print(f"Error in admin_new_orders_pagination: {e}")
+        await callback.answer("❌ Ошибка при загрузке страницы", show_alert=True)
 
 
 # admin_main_control_books
@@ -1300,3 +1401,124 @@ async def username_to_find(
         current_page=0,
         total_count=total_count,
     )
+
+
+@admin_router.message(AdminOrderState.waiting_order_id, F.text)
+@admin_required
+async def waiting_order_id(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    chat_id = data.get("chat_id")
+    old_hint = data.get("last_hint_id", [])
+    if old_hint:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=old_hint)
+        except Exception as e:
+            print(f"Не удалось удалить старое сообщение: {e}")
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение пользователя: {e}")
+    try:
+        order_id = int(message.text)
+    except ValueError:
+        hint_message = await message.answer(
+            text="❌ Номер заказа должен быть числом. Попробуйте еще раз:"
+        )
+        await state.update_data(last_hint_id=hint_message.message_id)
+        return
+    if order_id:
+        order_data = await AdminQueries.get_order_details(order_id)
+        if not order_data:
+            hint_message = await message.answer("❌ Заказ не найден")
+            await state.update_data(last_hint_id=hint_message.message_id)
+            return
+        text = await admin_format_order_details(order_data)
+        try:
+            status = await AdminQueries.get_order_status(order_id)
+            main_message = await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=main_message_id,
+                text=text,
+                reply_markup=await KbAdmin.kb_order_actions(
+                    order_id, admin_permissions, status
+                ),
+                parse_mode="HTML",
+            )
+            await state.update_data(
+                main_message_id=main_message.message_id,
+                order_id=order_id,
+            )
+        except Exception as e:
+            print(f"Ошибка при открытие заказа (по ID): {e}")
+
+
+@admin_router.message(AdminOrderState.waiting_username, F.text)
+@admin_required
+async def waiting_username(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    chat_id = data.get("chat_id")
+    old_hint = data.get("last_hint_id", [])
+    page = 0
+    if old_hint:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=old_hint)
+        except Exception as e:
+            print(f"Не удалось удалить старое сообщение: {e}")
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение пользователя: {e}")
+    username = str(message.text)
+    if username:
+        if username.startswith("@"):
+            username = username[1:]
+        user_telegram_id = await AdminQueries.get_telegram_id_by_username(username)
+        total_count = await AdminQueries.get_admin_orders_count_telegram_id(
+            user_telegram_id
+        )
+        if total_count < 1:
+            hint_message = await message.answer(
+                f"Не удалось найти заказы пользователя с username {username}"
+            )
+            await state.update_data(last_hint_id=hint_message.message_id)
+            return
+        orders_data = await AdminQueries.admin_get_user_orders_by_telegram_id_small(
+            user_telegram_id
+        )
+        if not orders_data:
+            hint_message = await message.answer("❌ Заказ не найден")
+            await state.update_data(last_hint_id=hint_message.message_id)
+            return
+        main_message = await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=main_message_id,
+            text=f"Все {total_count} заказы пользователя {username}",
+            reply_markup=await KbAdmin.kb_admin_find_orders_by_username(
+                orders_data=orders_data, page=page, total_count=total_count
+            ),
+        )
+        await state.clear()
+        await state.update_data(
+            messages_to_delete=[],
+            main_message_id=main_message.message_id,
+            search_username=username,
+            current_page=0,
+            total_count=total_count,
+        )
+        return

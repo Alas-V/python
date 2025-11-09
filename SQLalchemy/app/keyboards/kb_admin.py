@@ -118,16 +118,16 @@ class KbAdmin:
                 )
             ],
         ]
-        if PermissionChecker.has_permission(
-            admin_permissions, AdminPermission.VIEW_STATS
-        ):
-            keyboard.append(
-                [
-                    InlineKeyboardButton(
-                        text="📊 Экспорт в CSV", callback_data="admin_orders_export_csv"
-                    )
-                ]
-            )
+        # if PermissionChecker.has_permission(
+        #     admin_permissions, AdminPermission.VIEW_STATS
+        # ):
+        #     keyboard.append(
+        #         [
+        #             InlineKeyboardButton(
+        #                 text="📊 Экспорт в CSV", callback_data="admin_orders_export_csv"
+        #             )
+        #         ]
+        #     )
         keyboard.append(
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
         )
@@ -488,10 +488,84 @@ class KbAdmin:
             builder.row(*pagination_buttons)
         builder.row(
             InlineKeyboardButton(
-                text="🔙 Назад к управлению заказами", callback_data="admin_main_orders"
+                text="🔙Назад в меню заказов", callback_data="admin_main_orders"
             )
         )
         return builder.as_markup()
+
+    # close on for find by username
+    @staticmethod
+    async def kb_admin_find_orders_by_username(
+        orders_data: list,
+        page: int = 0,
+        total_count: int = 0,
+        items_per_page: int = 10,
+    ) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+        for order in orders_data:
+            order_id = order.get("order_id")
+            price = order.get("price", 0)
+            created_date = order.get("created_date")
+            book_ids = order.get("book_id", [])
+            username = order.get("username")
+            first_name = order.get("user_first_name")
+            items_count = len(book_ids) if book_ids else 0
+            if isinstance(created_date, datetime):
+                date_str = created_date.strftime("%d.%m %H:%M")
+            else:
+                date_str = "дата неизв."
+            user_display = username or first_name or "Пользователь"
+            if len(user_display) > 15:
+                user_display = user_display[:15] + "..."
+            button_text = f"#{order_id} | {items_count} поз. | {price}₽ | {date_str}"
+            if len(button_text) > 40:
+                button_text = button_text[:37] + "..."
+            builder.button(
+                text=button_text, callback_data=f"admin_view_order_{order_id}"
+            )
+        builder.adjust(1)
+        if total_count > items_per_page:
+            total_pages = (total_count + items_per_page - 1) // items_per_page
+            pagination_buttons = []
+            if page > 0:
+                pagination_buttons.append(
+                    InlineKeyboardButton(
+                        text="⬅️ Назад",
+                        callback_data=f"page_admin_find_by_username_orders_{username}_{page - 1}",
+                    )
+                )
+            pagination_buttons.append(
+                InlineKeyboardButton(
+                    text=f"{page + 1}/{total_pages}", callback_data="no_action"
+                )
+            )
+            if page < total_pages - 1:
+                pagination_buttons.append(
+                    InlineKeyboardButton(
+                        text="Вперед ➡️",
+                        callback_data=f"page_admin_find_by_username_orders_{username}_{page + 1}",
+                    )
+                )
+            builder.row(*pagination_buttons)
+        builder.row(
+            InlineKeyboardButton(
+                text="🔙Назад в меню заказов", callback_data="admin_main_orders"
+            )
+        )
+        return builder.as_markup()
+
+    @staticmethod
+    async def get_back_to_order_menu() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад в меню заказов",
+                        callback_data="admin_main_orders",
+                    )
+                ]
+            ]
+        )
 
     @staticmethod
     async def universal_appeals_keyboard(

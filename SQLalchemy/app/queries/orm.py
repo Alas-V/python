@@ -1502,6 +1502,46 @@ class AdminQueries:
             return result.scalar() or 0
 
     @staticmethod
+    async def get_telegram_id_by_username(username: str) -> int:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User.telegram_id).where(User.username.ilike(f"%{username}%"))
+            )
+            return result.scalar() or 0
+
+    @staticmethod
+    async def get_admin_orders_count_telegram_id(telegram_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(func.count(OrderData.order_id)).where(
+                    OrderData.telegram_id == telegram_id
+                )
+            )
+            return result.scalar() or 0
+
+    @staticmethod
+    async def admin_get_user_orders_by_telegram_id_small(
+        telegram_id: int, page: int = 0, items_per_page: int = 10
+    ) -> list:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    OrderData.order_id,
+                    OrderData.price,
+                    OrderData.created_date,
+                    OrderData.book_id,
+                    User.username,
+                    User.user_first_name,
+                )
+                .where(OrderData.telegram_id == telegram_id)
+                .join(User, User.telegram_id == OrderData.telegram_id)
+                .order_by(OrderData.created_date.desc())
+                .offset(page * items_per_page)
+                .limit(items_per_page)
+            )
+            return result.mappings().all()
+
+    @staticmethod
     async def get_admin_orders_paginated(
         order_type: str, page: int = 0, items_per_page: int = 10
     ) -> list:
