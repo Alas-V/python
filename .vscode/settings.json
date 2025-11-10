@@ -6,7 +6,8 @@
         "reviewchange",
         "reviewsdelete",
         "reviewssure",
-        "reviewsure"
+        "reviewsure",
+        "superadmin"
     ],
     "python-envs.defaultEnvManager": "ms-python.python:system",
     "python-envs.pythonProjects": []

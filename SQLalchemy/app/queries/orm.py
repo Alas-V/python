@@ -18,6 +18,7 @@ from models import (
     Admin,
     AdminPermission,
     PriorityStatus,
+    AdminRole,
 )
 from faker import Faker
 import random
@@ -36,6 +37,13 @@ order_type_to_admin_orders_dict = {
     "delivering": OrderStatus.DELIVERING,
     "completed": OrderStatus.COMPLETED,
     "canceled": OrderStatus.CANCELLED,
+}
+
+admin_role_dict = {
+    "superadmin": AdminRole.SUPER_ADMIN,
+    "admin": AdminRole.ADMIN,
+    "manager": AdminRole.MANAGER,
+    "moderator": AdminRole.MODERATOR,
 }
 
 
@@ -1487,6 +1495,56 @@ class AdminQueries:
             query = query.limit(1)
             result = await session.execute(query)
             return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    async def get_admins_info() -> dict:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Admin.permissions, func.count(Admin.admin_id)).group_by(
+                    Admin.permissions
+                )
+            )
+            stats = result.all()
+            stats_dict = {}
+            for permission, count in stats:
+                if permission == AdminPermission.SUPER_ADMIN_PERMS:
+                    stats_dict["super_admins"] = count
+                elif permission == AdminPermission.ADMIN_PERMS:
+                    stats_dict["admins"] = count
+                elif permission == AdminPermission.MANAGER_PERMS:
+                    stats_dict["managers"] = count
+                elif permission == AdminPermission.MODERATOR_PERMS:
+                    stats_dict["moderators"] = count
+            stats_dict["total"] = sum(stats_dict.values())
+            return stats_dict
+
+    @staticmethod
+    async def get_total_count_admins_by_lvl(admin_lvl) -> int:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(func.count(Admin.admin_id)).where(
+                    Admin.role_name
+                    == admin_role_dict.get(admin_lvl)  # dict on top of the all orm
+                )
+            )
+            return result.scalar() or 0
+
+    @staticmethod
+    async def get_admins_paginated(
+        admin_lvl: str, page: int = 0, items_per_page: int = 10
+    ) -> list:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    Admin.admin_id,
+                    Admin.name,
+                )
+                .where(Admin.role_name == admin_role_dict.get(admin_lvl))
+                .order_by(Admin.created_at.desc())
+                .offset(page * items_per_page)
+                .limit(items_per_page)
+            )
+            return result.mappings().all()
 
     @staticmethod
     async def get_admin_orders_count(order_type: str) -> int:

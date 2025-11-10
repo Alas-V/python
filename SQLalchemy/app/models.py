@@ -73,6 +73,13 @@ class BookStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class AdminRole(str, Enum):
+    SUPER_ADMIN = "super_admin"
+    ADMIN = "admin"
+    MANAGER = "manager"
+    MODERATOR = "moderator"
+
+
 class AppealStatus(str, Enum):
     NEW = "new"
     IN_WORK = "in_work"
@@ -197,7 +204,9 @@ class Admin(Base):
     permissions: Mapped[int] = mapped_column(
         Integer, default=AdminPermission.MODERATOR_PERMS
     )
-    role_name: Mapped[str] = mapped_column(String(20), default="moderator")
+    role_name: Mapped[AdminRole] = mapped_column(
+        String(20), default=AdminRole.MODERATOR
+    )
     # total_message_count: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]

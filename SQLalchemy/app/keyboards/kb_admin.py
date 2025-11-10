@@ -134,6 +134,87 @@ class KbAdmin:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
+    async def kb_admin_menage_menu() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔎 Просмотр Администраторов",
+                        callback_data="admin_see_admins",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="➕ Добавить администратора",
+                        callback_data="admin_add_new_admin",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="❌ Удалить администратора",
+                        callback_data="admin_delate_admin",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data="admin_main_control_admins"
+                    )
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def choose_admin_lvl() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="👑 Супер-админы", callback_data="show_admin_superadmin"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🛡️ Администраторы", callback_data="show_admin_admin"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="⚡ Менеджеры", callback_data="show_admin_manager"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔧  Модераторы", callback_data="show_admin_moderator"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data="show_admin_superadmin"
+                    )
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def in_admin_details(admin_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="✏️ Управления правами",
+                        callback_data=f"changing_admin_rights_{admin_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🗑️ Удаление администратора",
+                        callback_data=f"admin_deleting_admin_with_{admin_id}",
+                    )
+                ],
+            ]
+        )
+
+    @staticmethod
     async def kb_order_actions(
         order_id: int, admin_permissions, status
     ) -> InlineKeyboardMarkup:
@@ -551,6 +632,54 @@ class KbAdmin:
             InlineKeyboardButton(
                 text="🔙Назад в меню заказов", callback_data="admin_main_orders"
             )
+        )
+        return builder.as_markup()
+
+    # one more for admin find
+    @staticmethod
+    async def kb_find_admins(
+        admin_lvl: str,
+        admin_data: list,
+        page: int = 0,
+        total_count: int = 0,
+        items_per_page: int = 10,
+    ) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+        for admin in admin_data:
+            admin_id = admin.get("admin_id")
+            admin_name = admin.get("admin_name")
+            button_text = f"{admin_name}"
+            if len(button_text) > 40:
+                button_text = button_text[:37] + "..."
+            builder.button(
+                text=button_text, callback_data=f"admin_view_admin_{admin_id}"
+            )
+        builder.adjust(1)
+        if total_count > items_per_page:
+            total_pages = (total_count + items_per_page - 1) // items_per_page
+            pagination_buttons = []
+            if page > 0:
+                pagination_buttons.append(
+                    InlineKeyboardButton(
+                        text="⬅️ Назад",
+                        callback_data=f"page_admin_see_admins_{admin_lvl}_{page - 1}",
+                    )
+                )
+            pagination_buttons.append(
+                InlineKeyboardButton(
+                    text=f"{page + 1}/{total_pages}", callback_data="no_action"
+                )
+            )
+            if page < total_pages - 1:
+                pagination_buttons.append(
+                    InlineKeyboardButton(
+                        text="Вперед ➡️",
+                        callback_data=f"page_admin_see_admins_{admin_lvl}_{page + 1}",
+                    )
+                )
+            builder.row(*pagination_buttons)
+        builder.row(
+            InlineKeyboardButton(text="🔙Назад", callback_data="admin_see_admins")
         )
         return builder.as_markup()
 

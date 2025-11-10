@@ -22,6 +22,8 @@ from text_templates import (
     admin_all_statistic_text,
     admin_order_statistic,
     admin_format_order_details,
+    admin_list_text,
+    admin_details,
 )
 from utils.states import AdminSupportState, AdminOrderState, AdminReasonToCancellation
 from models import AppealStatus, AdminPermission, OrderStatus
@@ -991,27 +993,6 @@ async def cancellation_order_by_admin_with_reason(
         await callback.answer("❌ Ошибка при загрузке заказа", show_alert=True)
 
 
-# not_need
-# @admin_router.callback_query(F.data == "admin_find_orders_by_id")
-# @admin_required
-# async def admin_find_orders_by_id(
-#     callback: CallbackQuery,
-#     state: FSMContext,
-#     is_admin: bool,
-#     admin_permissions: int,
-#     admin_name: str,
-# ):
-#     main_message = await callback.message.edit_text(
-#         text="Введите номер заказа для поиска",
-#         reply_markup=await KbAdmin.get_back_to_order_menu(),
-#     )
-#     await state.set_state(AdminOrderState.waiting_order_id)
-#     await state.update_data(
-#         main_message_id=main_message.message_id,
-#         chat_id=callback.message.chat.id,
-#     )
-
-
 @admin_router.callback_query(F.data.startswith("admin_find_orders_by_"))
 @admin_required
 async def admin_find_orders_by(
@@ -1076,8 +1057,203 @@ async def page_admin_find_by_username_orders(
         await callback.answer("❌ Ошибка при загрузке страницы", show_alert=True)
 
 
-# admin_main_control_books
-# admin_main_control_admins
+@admin_router.callback_query(F.data == "admin_main_control_admins")
+@admin_required
+async def admin_main_control_admins(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для управления администраторами", show_alert=True
+        )
+        return
+    data = await state.get_data()
+    old_hint = data.get("last_hint_id", [])
+    if old_hint:
+        try:
+            await bot.delete_message(
+                chat_id=callback.message.chat.id, message_id=old_hint
+            )
+        except Exception as e:
+            print(f"Не удалось удалить старое сообщение: {e}")
+    try:
+        admins_info = await AdminQueries.get_admins_info()
+        admins_text = await admin_list_text(admins_info)
+        await callback.message.edit_text(
+            text=admins_text,
+            reply_markup=await KbAdmin.kb_admin_menage_menu(),
+            parse_mode="HTML",
+        )
+        await callback.answer()
+        return
+    except Exception as e:
+        print(f"Error in admin_view_admins: {e}")
+        await callback.answer("❌ Ошибка при загрузке ", show_alert=True)
+
+
+@admin_router.callback_query(F.data == "admin_add_new_admin")
+@admin_required
+async def admin_add_new_admin(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для управления администраторами", show_alert=True
+        )
+        return
+    try:
+        data = await state.get_data()
+        old_hint = data.get("last_hint_id", [])
+        if old_hint:
+            try:
+                await bot.delete_message(
+                    chat_id=callback.message.chat.id, message_id=old_hint
+                )
+            except Exception as e:
+                print(f"Не удалось удалить старое сообщение: {e}")
+        await callback.message.edit_text(
+            text="Выберите уровень администратора для просмотра:",
+            reply_markup=await KbAdmin.choose_admin_lvl(),
+        )
+        await callback.answer()
+        return
+    except Exception as e:
+        print(f"Error in admin_view_admins: {e}")
+        await callback.answer("❌ Ошибка при загрузке ", show_alert=True)
+
+
+@admin_router.callback_query(F.data.startswith("show_admin_"))
+@admin_required
+async def show_admin(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для управления администраторами", show_alert=True
+        )
+        return
+    admin_lvl = str(callback.data.split("_")[-1])
+    try:
+        page = 0
+        total_count = await AdminQueries.get_total_count_admins_by_lvl(admin_lvl)
+        orders_data = await AdminQueries.get_admins_paginated(admin_lvl, page=page)
+        if not orders_data:
+            await callback.answer(
+                text="❌ Администраторов данного уровня",
+                show_alert=True,
+            )
+            return
+        admin_text = {
+            "superadmin": f" <b>👑 Управления администраторами уровня: Супер-Администратор</b>\n\nВсего администраторов данного уровня: {total_count}",
+            "admin": f" <b>🛡️ Управления администраторами уровня: Администратор</b>\n\nВсего администраторов данного уровня: {total_count}",
+            "manager": f" <b>⚡ Управления администраторами уровня: Менеджер</b>\n\nВсего администраторов данного уровня: {total_count}",
+            "moderator": f" <b>🔧 Управления администраторами уровня: Модератор </b>\n\nВсего администраторов данного уровня: {total_count}",
+        }
+        await callback.message.edit_text(
+            text=admin_text.get(admin_lvl),
+            reply_markup=await KbAdmin.kb_find_admins(
+                admin_lvl, orders_data=orders_data, page=page, total_count=total_count
+            ),
+            parse_mode="HTML",
+        )
+        await callback.answer()
+    except Exception as e:
+        print(f"Error in admin_new_orders: {e}")
+        await callback.answer("❌ Ошибка при загрузке администраторов", show_alert=True)
+
+
+@admin_router.callback_query(F.data.startswith("page_admin_see_admins_"))
+@admin_required
+async def page_admin_see_admins(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для управления администраторами", show_alert=True
+        )
+        return
+    try:
+        page = int(callback.data.split("_")[-1])
+        admin_lvl = str(callback.data.split("_")[-2])
+        total_count = await AdminQueries.get_total_count_admins_by_lvl(admin_lvl)
+        orders_data = await AdminQueries.get_admins_paginated(admin_lvl, page=page)
+        if not orders_data:
+            await callback.answer("Больше администраторов нет", show_alert=True)
+            return
+        admin_text = {
+            "superadmin": f" <b>👑 Управления администраторами уровня: Супер-Администратор</b>\n\nВсего администраторов данного уровня: {total_count}",
+            "admin": f" <b>🛡️ Управления администраторами уровня: Администратор</b>\n\nВсего администраторов данного уровня: {total_count}",
+            "manager": f" <b>⚡ Управления администраторами уровня: Менеджер</b>\n\nВсего администраторов данного уровня: {total_count}",
+            "moderator": f" <b>🔧 Управления администраторами уровня: Модератор </b>\n\nВсего администраторов данного уровня: {total_count}",
+        }
+        await callback.message.edit_text(
+            text=admin_text.get(admin_lvl),
+            reply_markup=await KbAdmin.kb_find_admins(
+                admin_lvl, orders_data=orders_data, page=page, total_count=total_count
+            ),
+            parse_mode="HTML",
+        )
+        await callback.answer()
+    except Exception as e:
+        print(f"Error in page_admin_see_admins_: {e}")
+        await callback.answer("❌ Ошибка при загрузке страницы", show_alert=True)
+
+
+@admin_router.callback_query(F.data.startswith("admin_view_admin_"))
+@admin_required
+async def admin_view_admin(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для управления администраторами", show_alert=True
+        )
+        return
+    try:
+        admin_id = int(callback.data.split("_")[-1])
+        admin = await AdminQueries.get_admin_by_id(admin_id)
+        admin_detailed_text = await admin_details(admin)
+        await callback.message.edit_text(
+            text=admin_detailed_text,
+            reply_markup=await KbAdmin.in_admin_details(admin_id),
+        )
+        await callback.answer()
+        return
+    except Exception as e:
+        print(f"Error in admin_view_admin_: {e}")
+        await callback.answer("❌ Ошибка при загрузке страницы", show_alert=True)
 
 
 # FMScontext hnd

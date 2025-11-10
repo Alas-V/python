@@ -1,5 +1,5 @@
 from datetime import datetime
-from models import OrderStatus
+from models import OrderStatus, Admin, AdminPermission, AdminRole
 
 
 async def get_book_details(book_data: dict):
@@ -589,7 +589,6 @@ def admin_order_statistic(stats: dict) -> str:
     • Всего отмен: {cancelled_total}
 
 <b>Выберите действие:</b>"""
-
     return text
 
 
@@ -640,6 +639,88 @@ async def admin_personal_support_statistic(statistic_data: dict) -> str:
   └─ Закрыто: {closed_today_total}
 • Всего обращений: {total_appeals}
 """
+
+
+async def admin_list_text(admins_info: dict) -> str:
+    total = admins_info.get("total", 0)
+    super_admins = admins_info.get("super_admins", 0)
+    admins = admins_info.get("admins", 0)
+    moderators = admins_info.get("moderators", 0)
+    managers = admins_info.get("managers", 0)
+    text = (
+        "👑 <b>Статистика администраторов</b>\n\n"
+        f"📊 <b>Всего администраторов:</b> {total}\n\n"
+        "🔐 <b>Распределение по правам:</b>\n"
+        f"👑 Супер-админы: <b>{super_admins}</b>\n"
+        f"🛡️ Администраторы: <b>{admins}</b>\n"
+        f"⚡  Менеджеры: <b>{managers}</b>\n"
+        f"🔧  Модераторы: <b>{moderators}</b>\n"
+    )
+    return text
+
+
+def decode_permissions(permissions: int) -> str:
+    """Декодировать битовую маску прав в читаемый текст"""
+    permission_list = []
+
+    if permissions & AdminPermission.MANAGE_SUPPORT:
+        permission_list.append("├ 📞 Управление поддержкой")
+    if permissions & AdminPermission.MANAGE_ORDERS:
+        permission_list.append("├ 📦 Управление заказами")
+    if permissions & AdminPermission.MANAGE_BOOKS:
+        permission_list.append("├ 📚 Управление книгами")
+    if permissions & AdminPermission.VIEW_STATS:
+        permission_list.append("├ 📊 Просмотр статистики")
+    if permissions & AdminPermission.MANAGE_ADMINS:
+        permission_list.append("├ 👑 Управление админами")
+    if not permission_list:
+        permission_list.append("├ ❌ Нет прав")
+    return "\n".join(permission_list)
+
+
+admins_role_dict = {
+    AdminRole.SUPER_ADMIN: "👑 Супер-админ",
+    AdminRole.ADMIN: "🛡️ Администратор",
+    AdminRole.MANAGER: "⚡ Менеджер",
+    AdminRole.MODERATOR: "🔧 Модератор",
+}
+
+
+async def admin_details(admin: Admin) -> str:
+    admin_id = admin.admin_id
+    name = admin.name or "Не указано"
+    telegram_id = admin.telegram_id
+    permissions = admin.permissions
+    created_at = (
+        admin.created_at.strftime("%d.%m.%Y %H:%M")
+        if admin.created_at
+        else "Неизвестно"
+    )
+    updated_at = (
+        admin.updated_at.strftime("%d.%m.%Y %H:%M")
+        if admin.updated_at
+        else "Неизвестно"
+    )
+    permissions_text = decode_permissions(permissions)
+
+    text = f"""
+👑 <b>Детали администратора</b>
+
+<b>📋 Основная информация:</b>
+├ ID: <code>{admin_id}</code>
+├ Имя: {name}
+├ Telegram ID: <code>{telegram_id}</code>
+├ Роль: {admins_role_dict.get(admin.role_name)}
+└ Права: {permissions}
+
+<b>🔐 Права доступа:</b>
+{permissions_text}
+
+<b>📅 Даты:</b>
+├ Создан: {created_at}
+└ Обновлен: {updated_at}
+"""
+    return text
 
 
 INFOTEXT = """📚 BookStore Demo Bot
