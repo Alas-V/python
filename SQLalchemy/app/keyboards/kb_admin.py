@@ -155,11 +155,7 @@ class KbAdmin:
                         callback_data="admin_delate_admin",
                     )
                 ],
-                [
-                    InlineKeyboardButton(
-                        text="🔙 Назад", callback_data="admin_main_control_admins"
-                    )
-                ],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")],
             ]
         )
 
@@ -189,14 +185,14 @@ class KbAdmin:
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🔙 Назад", callback_data="show_admin_superadmin"
+                        text="🔙 Назад", callback_data="admin_main_control_admins"
                     )
                 ],
             ]
         )
 
     @staticmethod
-    async def in_admin_details(admin_id: int) -> InlineKeyboardMarkup:
+    async def in_admin_details(admin_id: int, admin_role: str) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -207,8 +203,33 @@ class KbAdmin:
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🗑️ Удаление администратора",
+                        text="🗑️ Удалить администратора",
                         callback_data=f"admin_deleting_admin_with_{admin_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад",
+                        callback_data=f"show_admin_{admin_role}",
+                    )
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def sure_to_delete_admin(admin_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="❌ Удалить",
+                        callback_data=f"admin_sure_delete_admin_{admin_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад",
+                        callback_data=f"admin_view_admin_{admin_id}",
                     )
                 ],
             ]
@@ -647,7 +668,7 @@ class KbAdmin:
         builder = InlineKeyboardBuilder()
         for admin in admin_data:
             admin_id = admin.get("admin_id")
-            admin_name = admin.get("admin_name")
+            admin_name = admin.name
             button_text = f"{admin_name}"
             if len(button_text) > 40:
                 button_text = button_text[:37] + "..."

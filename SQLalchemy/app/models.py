@@ -78,6 +78,7 @@ class AdminRole(str, Enum):
     ADMIN = "admin"
     MANAGER = "manager"
     MODERATOR = "moderator"
+    DELETED = "deleted"
 
 
 class AppealStatus(str, Enum):

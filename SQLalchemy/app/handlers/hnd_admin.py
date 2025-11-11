@@ -26,7 +26,7 @@ from text_templates import (
     admin_details,
 )
 from utils.states import AdminSupportState, AdminOrderState, AdminReasonToCancellation
-from models import AppealStatus, AdminPermission, OrderStatus
+from models import AppealStatus, AdminPermission, OrderStatus, AdminRole
 import asyncio
 from aiogram.exceptions import TelegramBadRequest
 from utils.admin_utils import PermissionChecker
@@ -1098,7 +1098,7 @@ async def admin_main_control_admins(
         await callback.answer("❌ Ошибка при загрузке ", show_alert=True)
 
 
-@admin_router.callback_query(F.data == "admin_add_new_admin")
+@admin_router.callback_query(F.data == "admin_see_admins")
 @admin_required
 async def admin_add_new_admin(
     callback: CallbackQuery,
@@ -1156,8 +1156,8 @@ async def show_admin(
     try:
         page = 0
         total_count = await AdminQueries.get_total_count_admins_by_lvl(admin_lvl)
-        orders_data = await AdminQueries.get_admins_paginated(admin_lvl, page=page)
-        if not orders_data:
+        admin_data = await AdminQueries.get_admins_paginated(admin_lvl, page=page)
+        if not admin_data:
             await callback.answer(
                 text="❌ Администраторов данного уровня",
                 show_alert=True,
@@ -1172,7 +1172,7 @@ async def show_admin(
         await callback.message.edit_text(
             text=admin_text.get(admin_lvl),
             reply_markup=await KbAdmin.kb_find_admins(
-                admin_lvl, orders_data=orders_data, page=page, total_count=total_count
+                admin_lvl, admin_data, page=page, total_count=total_count
             ),
             parse_mode="HTML",
         )
@@ -1244,16 +1244,153 @@ async def admin_view_admin(
     try:
         admin_id = int(callback.data.split("_")[-1])
         admin = await AdminQueries.get_admin_by_id(admin_id)
-        admin_detailed_text = await admin_details(admin)
-        await callback.message.edit_text(
+        username = await AdminQueries.get_username_by_telegram_id(
+            int(admin.telegram_id)
+        )
+        admin_detailed_text = await admin_details(admin, username)
+        admin_role = await AdminQueries.get_admin_role_by_admin_id(admin_id)
+        if not admin_role:
+            await callback.answer(
+                text="Произошла ошибка при открытие администратора", show_alert=True
+            )
+        rights = {
+            AdminRole.SUPER_ADMIN: "superadmin",
+            AdminRole.ADMIN: "admin",
+            AdminRole.MANAGER: "manager",
+            AdminRole.MODERATOR: "moderator",
+        }
+        main_message = await callback.message.edit_text(
             text=admin_detailed_text,
-            reply_markup=await KbAdmin.in_admin_details(admin_id),
+            reply_markup=await KbAdmin.in_admin_details(
+                admin_id, admin_role=rights.get(admin_role, "Не найдена")
+            ),
+            parse_mode="HTML",
+        )
+        await state.update_data(
+            main_message_id=main_message.message_id, current_admin_id=admin_id
         )
         await callback.answer()
         return
     except Exception as e:
         print(f"Error in admin_view_admin_: {e}")
         await callback.answer("❌ Ошибка при загрузке страницы", show_alert=True)
+
+
+@admin_router.callback_query(F.data.startswith("admin_deleting_admin_with_"))
+@admin_required
+async def admin_deleting_admin_with(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для управления администраторами", show_alert=True
+        )
+        return
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    admin_id_to_delete = int(callback.data.split("_")[-1])
+    admin = await AdminQueries.get_admin_by_id(admin_id_to_delete)
+    admin_tg_id = int(callback.from_user.id)
+    admin_who_delete = await AdminQueries.get_admin_by_telegram_id(admin_tg_id)
+    # if admin_who_delete.admin_id == admin_id_to_delete:
+    #     await callback.answer(text="Вы не можете удалить себя", show_alert=True)
+    #     return
+    hint_message = await callback.message.answer(
+        text=f"Вы уверены что хотите удалить администратора {admin.name}",
+        reply_markup=await KbAdmin.sure_to_delete_admin(admin_id_to_delete),
+    )
+    await state.update_data(
+        main_message_id=main_message_id,
+        last_hint_id=hint_message.message_id,
+        admin_id_to_delete=admin_id_to_delete,
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin_sure_delete_admin_"))
+@admin_required
+async def admin_sure_delete_admin(
+    callback: CallbackQuery,
+    bot: Bot,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для управления администраторами", show_alert=True
+        )
+        return
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    last_hint_id = data.get("last_hint_id")
+    if last_hint_id:
+        try:
+            await callback.message.bot.delete_message(
+                chat_id=callback.message.chat.id, message_id=last_hint_id
+            )
+        except Exception:
+            pass
+    admin_id_to_delete = int(callback.data.split("_")[-1])
+    admin_role = await AdminQueries.get_admin_role_by_admin_id(admin_id_to_delete)
+    rights = {
+        AdminRole.SUPER_ADMIN: "superadmin",
+        AdminRole.ADMIN: "admin",
+        AdminRole.MANAGER: "manager",
+        AdminRole.MODERATOR: "moderator",
+    }
+    admin_tg_id = int(callback.from_user.id)
+    admin = await AdminQueries.get_admin_by_telegram_id(admin_tg_id)
+    # if admin.admin_id == admin_id_to_delete:
+    #     await callback.answer(text="Вы не можете удалить себя", show_alert=True)
+    deleted = await AdminQueries.delete_admin(admin_id_to_delete)
+    if not deleted:
+        await callback.answer("Не удалось удалить администратора", show_alert=True)
+        return
+    deleted_admin = await AdminQueries.get_admin_by_id(admin_id_to_delete)
+    username = await AdminQueries.get_username_by_telegram_id(
+        int(deleted_admin.telegram_id)
+    )
+    admin_detailed_text = await admin_details(deleted_admin, username)
+    if main_message_id:
+        try:
+            await bot.edit_message_text(
+                chat_id=callback.message.chat.id,
+                message_id=main_message_id,
+                text=admin_detailed_text,
+                reply_markup=await KbAdmin.in_admin_details(
+                    admin_id_to_delete, admin_role=rights.get(admin_role, "Не найдена")
+                ),
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            print(f"Не удалось отредактировать сообщение: {e}")
+            await callback.message.answer(
+                text=admin_detailed_text,
+                reply_markup=await KbAdmin.in_admin_details(
+                    admin_id_to_delete, admin_role=rights.get(admin_role, "Не найдена")
+                ),
+                parse_mode="HTML",
+            )
+    else:
+        await callback.message.answer(
+            text=admin_detailed_text,
+            reply_markup=await KbAdmin.in_admin_details(
+                admin_id_to_delete, admin_role=rights.get(admin_role, "Не найдена")
+            ),
+            parse_mode="HTML",
+        )
+    await state.clear()
+    await callback.answer("Администратор был удален", show_alert=True)
 
 
 # FMScontext hnd

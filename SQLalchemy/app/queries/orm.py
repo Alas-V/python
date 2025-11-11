@@ -1193,6 +1193,14 @@ class AdminQueries:
             return admin
 
     @staticmethod
+    async def get_username_by_telegram_id(telegram_id: int):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User.username).where(User.telegram_id == telegram_id)
+            )
+            return result.scalar_one_or_none()
+
+    @staticmethod
     async def get_admin_by_id(admin_id: int):
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -1528,6 +1536,26 @@ class AdminQueries:
                 )
             )
             return result.scalar() or 0
+
+    @staticmethod
+    async def get_admin_role_by_admin_id(admin_id: int):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Admin.role_name).where(Admin.admin_id == admin_id)
+            )
+            return result.scalar_one_or_none()
+
+    @staticmethod
+    async def delete_admin(admin_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                update(Admin)
+                .where(Admin.admin_id == admin_id)
+                .values(permissions=AdminPermission.NONE, role_name=AdminRole.DELETED)
+            )
+            await session.execute(stmt)
+            await session.commit()
+            return True
 
     @staticmethod
     async def get_admins_paginated(

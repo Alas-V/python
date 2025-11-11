@@ -499,6 +499,10 @@ async def admin_format_order_details(order_details: dict) -> str:
     else:
         date_str = "дата неизв."
     username = user_info.get("username", "Не указан")
+    if username:
+        username_link = f'<a href="tg://resolve?domain={username}">@{username}</a>'
+    else:
+        username_link = "не указан"
     first_name = user_info.get("first_name", "Не указано")
     telegram_id = user_info.get("telegram_id", "Не указан")
     comment = address_info.get("comment")
@@ -546,7 +550,7 @@ async def admin_format_order_details(order_details: dict) -> str:
 
 <b>👤 Информация о покупателе:</b>
 ├ Имя: {first_name}
-├ Username: @{username}
+├ Username: {username_link}
 └ Telegram ID: <code>{telegram_id}</code>
 
 <b>🏠 Адрес доставки:</b>
@@ -660,7 +664,6 @@ async def admin_list_text(admins_info: dict) -> str:
 
 
 def decode_permissions(permissions: int) -> str:
-    """Декодировать битовую маску прав в читаемый текст"""
     permission_list = []
 
     if permissions & AdminPermission.MANAGE_SUPPORT:
@@ -673,6 +676,8 @@ def decode_permissions(permissions: int) -> str:
         permission_list.append("├ 📊 Просмотр статистики")
     if permissions & AdminPermission.MANAGE_ADMINS:
         permission_list.append("├ 👑 Управление админами")
+    if permissions & AdminPermission.NONE:
+        permission_list.append("├ ❌ Нет прав")
     if not permission_list:
         permission_list.append("├ ❌ Нет прав")
     return "\n".join(permission_list)
@@ -683,14 +688,19 @@ admins_role_dict = {
     AdminRole.ADMIN: "🛡️ Администратор",
     AdminRole.MANAGER: "⚡ Менеджер",
     AdminRole.MODERATOR: "🔧 Модератор",
+    AdminRole.DELETED: "❌ Удалён",
 }
 
 
-async def admin_details(admin: Admin) -> str:
+async def admin_details(admin: Admin, username) -> str:
     admin_id = admin.admin_id
     name = admin.name or "Не указано"
     telegram_id = admin.telegram_id
     permissions = admin.permissions
+    if username:
+        username_link = f'<a href="tg://resolve?domain={username}">@{username}</a>'
+    else:
+        username_link = "не указан"
     created_at = (
         admin.created_at.strftime("%d.%m.%Y %H:%M")
         if admin.created_at
@@ -709,9 +719,10 @@ async def admin_details(admin: Admin) -> str:
 <b>📋 Основная информация:</b>
 ├ ID: <code>{admin_id}</code>
 ├ Имя: {name}
+├ Telegram username: {username_link}
 ├ Telegram ID: <code>{telegram_id}</code>
 ├ Роль: {admins_role_dict.get(admin.role_name)}
-└ Права: {permissions}
+
 
 <b>🔐 Права доступа:</b>
 {permissions_text}
