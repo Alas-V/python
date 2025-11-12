@@ -24,8 +24,14 @@ from text_templates import (
     admin_format_order_details,
     admin_list_text,
     admin_details,
+    format_admin_permissions_text,
 )
-from utils.states import AdminSupportState, AdminOrderState, AdminReasonToCancellation
+from utils.states import (
+    AdminSupportState,
+    AdminOrderState,
+    AdminReasonToCancellation,
+    EditAdminPermissions,
+)
 from models import AppealStatus, AdminPermission, OrderStatus, AdminRole
 import asyncio
 from aiogram.exceptions import TelegramBadRequest
@@ -1298,9 +1304,9 @@ async def admin_deleting_admin_with(
     admin = await AdminQueries.get_admin_by_id(admin_id_to_delete)
     admin_tg_id = int(callback.from_user.id)
     admin_who_delete = await AdminQueries.get_admin_by_telegram_id(admin_tg_id)
-    # if admin_who_delete.admin_id == admin_id_to_delete:
-    #     await callback.answer(text="Вы не можете удалить себя", show_alert=True)
-    #     return
+    if admin_who_delete.admin_id == admin_id_to_delete:
+        await callback.answer(text="Вы не можете удалить себя", show_alert=True)
+        return
     hint_message = await callback.message.answer(
         text=f"Вы уверены что хотите удалить администратора {admin.name}",
         reply_markup=await KbAdmin.sure_to_delete_admin(admin_id_to_delete),
@@ -1350,8 +1356,8 @@ async def admin_sure_delete_admin(
     }
     admin_tg_id = int(callback.from_user.id)
     admin = await AdminQueries.get_admin_by_telegram_id(admin_tg_id)
-    # if admin.admin_id == admin_id_to_delete:
-    #     await callback.answer(text="Вы не можете удалить себя", show_alert=True)
+    if admin.admin_id == admin_id_to_delete:
+        await callback.answer(text="Вы не можете удалить себя", show_alert=True)
     deleted = await AdminQueries.delete_admin(admin_id_to_delete)
     if not deleted:
         await callback.answer("Не удалось удалить администратора", show_alert=True)
@@ -1391,6 +1397,204 @@ async def admin_sure_delete_admin(
         )
     await state.clear()
     await callback.answer("Администратор был удален", show_alert=True)
+
+
+@admin_router.callback_query(F.data.startswith("changing_admin_rights_"))
+@admin_required
+async def changing_admin_rights(
+    callback: CallbackQuery,
+    bot: Bot,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer(
+            "❌ У вас нет прав для управления администраторами", show_alert=True
+        )
+        return
+    try:
+        admin_id = int(callback.data.split("_")[-1])
+        admin_data = await AdminQueries.get_admin_by_id(admin_id)
+        if not admin_data:
+            await callback.answer("❌ Администратор не найден", show_alert=True)
+            return
+        await state.set_state(EditAdminPermissions.editing_permissions)
+        await state.update_data(
+            admin_id=admin_id,
+            original_permissions=admin_data.permissions,
+            temp_permissions=admin_data.permissions,
+            original_message_id=callback.message.message_id,
+            chat_id=callback.message.chat.id,
+        )
+        text = await format_admin_permissions_text(admin_data)
+        await callback.answer()
+        await callback.message.edit_text(
+            text=text,
+            reply_markup=await KbAdmin.edit_permissions_keyboard(
+                admin_data.permissions
+            ),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"Error in start_edit_permissions: {e}")
+        await callback.answer("❌ Ошибка при начале редактирования", show_alert=True)
+
+
+@admin_router.callback_query(F.data.startswith("toggle_perm_"))
+@admin_required
+async def toggle_permission(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    current_state = await state.get_state()
+    if current_state != EditAdminPermissions.editing_permissions:
+        await callback.answer("❌ Сессия редактирования завершена", show_alert=True)
+        return
+    try:
+        data = await state.get_data()
+        admin_id = data.get("admin_id")
+        original_permissions = data.get("original_permissions")
+        temp_permissions = data.get("temp_permissions", original_permissions)
+        perm_value = int(callback.data.split("_")[-1])
+        if PermissionChecker.has_permission(temp_permissions, perm_value):
+            temp_permissions &= ~perm_value
+        else:
+            temp_permissions |= perm_value
+        await state.update_data(temp_permissions=temp_permissions)
+        admin_data = await AdminQueries.get_admin_by_id(admin_id)
+        if not admin_data:
+            await callback.answer("❌ Администратор не найден", show_alert=True)
+            return
+        text = await format_admin_permissions_text(admin_data, temp_permissions)
+        await callback.answer()
+        await callback.message.edit_text(
+            text=text,
+            reply_markup=await KbAdmin.edit_permissions_keyboard(
+                original_permissions, temp_permissions
+            ),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"Error in toggle_permission: {e}")
+        await callback.answer("❌ Ошибка при изменении права", show_alert=True)
+
+
+@admin_router.callback_query(F.data == "apply_permission_changes")
+@admin_required
+async def apply_permission_changes(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        data = await state.get_data()
+        admin_id = data.get("admin_id")
+        temp_permissions = data.get("temp_permissions")
+        original_message_id = data.get("original_message_id")
+        chat_id = data.get("chat_id")
+        success = await AdminQueries.update_admin_permissions(
+            admin_id, temp_permissions
+        )
+        if success:
+            admin_data = await AdminQueries.get_admin_by_id(admin_id)
+            if not admin_data:
+                await callback.answer(
+                    "❌ Администратор не найден после обновления", show_alert=True
+                )
+                return
+            username = await AdminQueries.get_username_by_telegram_id(
+                admin_data.telegram_id
+            )
+            admin_detailed_text = await admin_details(admin_data, username)
+            admin_role = await AdminQueries.get_admin_role_by_admin_id(admin_id)
+            rights = {
+                AdminRole.SUPER_ADMIN: "superadmin",
+                AdminRole.ADMIN: "admin",
+                AdminRole.MANAGER: "manager",
+                AdminRole.MODERATOR: "moderator",
+            }
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=original_message_id,
+                text=admin_detailed_text,
+                reply_markup=await KbAdmin.in_admin_details(
+                    admin_id, admin_role=rights.get(admin_role, "Не найдена")
+                ),
+                parse_mode="HTML",
+            )
+            await callback.answer("✅ Права успешно обновлены!", show_alert=True)
+        else:
+            await callback.answer("❌ Ошибка при обновлении прав", show_alert=True)
+        await state.clear()
+    except Exception as e:
+        print(f"Error in apply_permission_changes: {e}")
+        await callback.answer("❌ Ошибка при применении изменений", show_alert=True)
+        await state.clear()
+
+
+@admin_router.callback_query(F.data == "cancel_permission_edit")
+@admin_required
+async def cancel_permission_edit(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        data = await state.get_data()
+        admin_id = data.get("admin_id")
+        original_message_id = data.get("original_message_id")
+        chat_id = data.get("chat_id")
+        admin_data = await AdminQueries.get_admin_by_id(admin_id)
+        if admin_data:
+            username = await AdminQueries.get_username_by_telegram_id(
+                admin_data.telegram_id
+            )
+            admin_detailed_text = await admin_details(admin_data, username)
+            admin_role = await AdminQueries.get_admin_role_by_admin_id(admin_id)
+            rights = {
+                AdminRole.SUPER_ADMIN: "superadmin",
+                AdminRole.ADMIN: "admin",
+                AdminRole.MANAGER: "manager",
+                AdminRole.MODERATOR: "moderator",
+            }
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=original_message_id,
+                text=admin_detailed_text,
+                reply_markup=await KbAdmin.in_admin_details(
+                    admin_id, admin_role=rights.get(admin_role, "Не найдена")
+                ),
+                parse_mode="HTML",
+            )
+        await state.clear()
+        await callback.answer("❌ Редактирование отменено", show_alert=True)
+    except Exception as e:
+        print(f"Error in cancel_permission_edit: {e}")
+        await callback.answer("❌ Ошибка при отмене", show_alert=True)
+        await state.clear()
 
 
 # FMScontext hnd

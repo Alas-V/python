@@ -1558,6 +1558,23 @@ class AdminQueries:
             return True
 
     @staticmethod
+    async def update_admin_permissions(admin_id: int, permissions: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            try:
+                stmt = (
+                    update(Admin)
+                    .where(Admin.admin_id == admin_id)
+                    .values(permissions=permissions)
+                )
+                await session.execute(stmt)
+                await session.commit()
+                return True
+            except Exception as e:
+                print(f"Error updating admin permissions: {e}")
+                await session.rollback()
+                return False
+
+    @staticmethod
     async def get_admins_paginated(
         admin_lvl: str, page: int = 0, items_per_page: int = 10
     ) -> list:

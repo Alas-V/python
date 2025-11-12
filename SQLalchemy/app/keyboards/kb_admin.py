@@ -535,6 +535,37 @@ class KbAdmin:
         )
 
     @staticmethod
+    async def edit_permissions_keyboard(
+        current_permissions: int, temp_permissions: int = None
+    ) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+        permissions_mask = (
+            temp_permissions if temp_permissions is not None else current_permissions
+        )
+        permissions_list = [
+            (AdminPermission.MANAGE_SUPPORT, "📞 Поддержка"),
+            (AdminPermission.MANAGE_ORDERS, "📦 Заказы"),
+            (AdminPermission.MANAGE_BOOKS, "📚 Книги"),
+            (AdminPermission.VIEW_STATS, "📊 Статистика"),
+            (AdminPermission.MANAGE_ADMINS, "👑 Админы"),
+        ]
+        for permission, description in permissions_list:
+            has_perm = PermissionChecker.has_permission(permissions_mask, permission)
+            icon = "✅" if has_perm else "❌"
+            builder.button(
+                text=f"{icon} {description}",
+                callback_data=f"toggle_perm_{permission.value}",
+            )
+            builder.adjust(2)
+        if temp_permissions is not None and temp_permissions != current_permissions:
+            builder.button(
+                text="✅ Применить изменения", callback_data="apply_permission_changes"
+            )
+        builder.button(text="🔙 Назад", callback_data="cancel_permission_edit")
+        builder.adjust(1)
+        return builder.as_markup()
+
+    @staticmethod
     async def kb_admin_find_orders(
         order_type: str,
         orders_data: list,
