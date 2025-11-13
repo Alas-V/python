@@ -535,6 +535,63 @@ class KbAdmin:
         )
 
     @staticmethod
+    async def sure_to_made_admin(
+        telegram_id: int, username: str
+    ) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"✅Сделать @{username} администратором ",
+                        callback_data=f"made_new_admin_{telegram_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад ", callback_data="admin_main_control_admins"
+                    )
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def open_main_menu() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Открыть главное меню ",
+                        callback_data="main_menu",
+                    )
+                ]
+            ]
+        )
+
+    @staticmethod
+    async def add_new_admin_go_back() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад ", callback_data="admin_main_control_admins"
+                    )
+                ]
+            ]
+        )
+
+    @staticmethod
+    async def try_again_make_admin() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад ", callback_data="admin_main_control_admins"
+                    )
+                ]
+            ]
+        )
+
+    @staticmethod
     async def manage_books_menu() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
@@ -574,7 +631,7 @@ class KbAdmin:
         ]
         for permission, description in permissions_list:
             has_perm = PermissionChecker.has_permission(permissions_mask, permission)
-            icon = "➕" if has_perm else "➖"
+            icon = "✅" if has_perm else "❌"
             permissions_builder.button(
                 text=f"{icon} {description}",
                 callback_data=f"toggle_perm_{permission.value}",

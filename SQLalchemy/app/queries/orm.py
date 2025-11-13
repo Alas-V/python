@@ -1234,6 +1234,42 @@ class OrderQueries:
 
 class AdminQueries:
     @staticmethod
+    async def is_user_admin(telegram_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Admin.admin_id).where(Admin.telegram_id == telegram_id)
+            )
+            return result.scalar_one_or_none()
+
+    @staticmethod
+    async def set_admin_new_name(admin_id: int, admin_name: str) -> bool:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(Admin).where(Admin.admin_id == admin_id).values(name=admin_name)
+            )
+            await session.commit()
+            return True
+
+    @staticmethod
+    async def made_new_admin_get_id(telegram_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            admin = Admin(
+                telegram_id=telegram_id,
+            )
+            session.add(admin)
+            await session.commit()
+            await session.refresh(admin)
+            return admin.admin_id
+
+    @staticmethod
+    async def is_user_in_db(username: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User).where(User.username.ilike(f"%{username}%"))
+            )
+            return result.scalar_one_or_none()
+
+    @staticmethod
     async def get_admins_with_permission(required_permission: AdminPermission) -> list:
         async with AsyncSessionLocal() as session:
             result = await session.execute(

@@ -690,6 +690,7 @@ admins_role_dict = {
     AdminRole.MANAGER: "⚡ Менеджер",
     AdminRole.MODERATOR: "🔧 Модератор",
     AdminRole.DELETED: "❌ Удалён",
+    AdminRole.NEW: "❌ Права ещё не выданы",
 }
 
 
@@ -738,13 +739,9 @@ async def admin_details(admin: Admin, username) -> str:
 async def format_admin_permissions_text(
     admin_data: Admin, temp_permissions: int = None
 ) -> str:
-    """Форматирование текста с правами администратора (принимает объект Admin)"""
-    # Используем временные права если они есть, иначе текущие права из объекта
     permissions_mask = (
         temp_permissions if temp_permissions is not None else admin_data.permissions
     )
-
-    # Основная информация
     text = f"""<b>👤 Редактирование прав администратора</b>
 
 📋 <b>Основная информация:</b>
@@ -754,8 +751,6 @@ async def format_admin_permissions_text(
 
 🔐 <b>Права доступа:</b>
 """
-
-    # Список всех возможных прав с их описанием
     permissions_list = [
         (AdminPermission.MANAGE_SUPPORT, "📞 Управление поддержкой"),
         (AdminPermission.MANAGE_ORDERS, "📦 Управление заказами"),
@@ -764,16 +759,13 @@ async def format_admin_permissions_text(
         (AdminPermission.MANAGE_ADMINS, "👑 Управление администраторами"),
     ]
 
-    # Добавляем каждое право в текст
     for permission, description in permissions_list:
         if PermissionChecker.has_permission(permissions_mask, permission):
             text += f"├ {description} ✅\n"
         else:
             text += f"├ {description} ❌\n"
-
-    # Показываем изменения если есть временные права
     if temp_permissions is not None and temp_permissions != admin_data.permissions:
-        text += f"\n🔄 <b>Изменения:</b>\n"
+        text += "\n🔄 <b>Изменения:</b>\n"
         for permission, description in permissions_list:
             current_has = PermissionChecker.has_permission(
                 admin_data.permissions, permission
@@ -784,49 +776,42 @@ async def format_admin_permissions_text(
                 text += f"├ {description} ➖ <i>будет удалено</i>\n"
             elif not current_has and temp_has:
                 text += f"├ {description} ➕ <i>будет добавлено</i>\n"
-
-    text += f"\n💡 <i>Нажмите на право чтобы переключить его состояние</i>"
-
+    text += "\n💡 <i>Нажмите на право чтобы переключить его состояние</i>"
     return text
 
 
-async def admin_details(admin_data: Admin, username: str = None) -> str:
-    """Детальная информация об администраторе (принимает объект Admin)"""
-    # Права доступа
-    permissions_text = "🔐 <b>Права доступа:</b>\n"
-    permissions_list = [
-        (AdminPermission.MANAGE_SUPPORT, "📞 Управление поддержкой"),
-        (AdminPermission.MANAGE_ORDERS, "📦 Управление заказами"),
-        (AdminPermission.MANAGE_BOOKS, "📚 Управление книгами"),
-        (AdminPermission.VIEW_STATS, "📊 Просмотр статистики"),
-        (AdminPermission.MANAGE_ADMINS, "👑 Управление администраторами"),
-    ]
+# async def admin_details(admin_data: Admin, username: str = None) -> str:
+#     permissions_text = "🔐 <b>Права доступа:</b>\n"
+#     permissions_list = [
+#         (AdminPermission.MANAGE_SUPPORT, "📞 Управление поддержкой"),
+#         (AdminPermission.MANAGE_ORDERS, "📦 Управление заказами"),
+#         (AdminPermission.MANAGE_BOOKS, "📚 Управление книгами"),
+#         (AdminPermission.VIEW_STATS, "📊 Просмотр статистики"),
+#         (AdminPermission.MANAGE_ADMINS, "👑 Управление администраторами"),
+#     ]
+#     for permission, description in permissions_list:
+#         if PermissionChecker.has_permission(admin_data.permissions, permission):
+#             permissions_text += f"├ {description} ✅\n"
+#         else:
+#             permissions_text += f"├ {description} ❌\n"
+#     if isinstance(admin_data.created_at, datetime):
+#         created_str = admin_data.created_at.strftime("%d.%m.%Y %H:%M")
+#     else:
+#         created_str = "Неизвестно"
 
-    for permission, description in permissions_list:
-        if PermissionChecker.has_permission(admin_data.permissions, permission):
-            permissions_text += f"├ {description} ✅\n"
-        else:
-            permissions_text += f"├ {description} ❌\n"
+#     text = f"""<b>👤 Информация об администраторе</b>
 
-    # Форматирование даты
-    if isinstance(admin_data.created_at, datetime):
-        created_str = admin_data.created_at.strftime("%d.%m.%Y %H:%M")
-    else:
-        created_str = "Неизвестно"
+# <b>📋 Основная информация:</b>
+# ├ ID: <code>{admin_data.admin_id}</code>
+# ├ Имя: {admin_data.name or "Не указано"}
+# ├ Telegram ID: <code>{admin_data.telegram_id}</code>
+# ├ Username: @{username if username else "Не указан"}
+# ├ Роль: {admin_data.role_name}
+# └ Дата регистрации: {created_str}
 
-    text = f"""<b>👤 Информация об администраторе</b>
+# {permissions_text}"""
 
-<b>📋 Основная информация:</b>
-├ ID: <code>{admin_data.admin_id}</code>
-├ Имя: {admin_data.name or "Не указано"}
-├ Telegram ID: <code>{admin_data.telegram_id}</code>
-├ Username: @{username if username else "Не указан"}
-├ Роль: {admin_data.role_name}
-└ Дата регистрации: {created_str}
-
-{permissions_text}"""
-
-    return text
+#     return text
 
 
 async def get_book_text_for_admin(books_data: dict) -> str:

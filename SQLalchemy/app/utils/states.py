@@ -48,3 +48,8 @@ class AdminReasonToCancellation(StatesGroup):
 
 class EditAdminPermissions(StatesGroup):
     editing_permissions = State()
+
+
+class AdminAddNewAdmin(StatesGroup):
+    waiting_for_username = State()
+    waiting_for_admin_name = State()

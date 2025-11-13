@@ -79,6 +79,7 @@ class AdminRole(str, Enum):
     MANAGER = "manager"
     MODERATOR = "moderator"
     DELETED = "deleted"
+    NEW = "new"
 
 
 class AppealStatus(str, Enum):
@@ -177,7 +178,7 @@ class User(Base):
         BigInteger, unique=True, nullable=False, index=True
     )
     username: Mapped[Optional[str]] = mapped_column(String(30), index=True)
-    user_first_name: Mapped[str] = mapped_column(String(50))
+    user_first_name: Mapped[str] = mapped_column(String(50), nullable=True)
     registration_date: Mapped[created_at]
     user_balance: Mapped[Numeric] = mapped_column(
         Numeric(10, 2),
@@ -203,12 +204,8 @@ class Admin(Base):
     admin_id: Mapped[intpk]
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True)
     name: Mapped[Optional[str]]
-    permissions: Mapped[int] = mapped_column(
-        Integer, default=AdminPermission.MODERATOR_PERMS
-    )
-    role_name: Mapped[AdminRole] = mapped_column(
-        String(20), default=AdminRole.MODERATOR
-    )
+    permissions: Mapped[int] = mapped_column(Integer, default=AdminPermission.NONE)
+    role_name: Mapped[AdminRole] = mapped_column(String(20), default=AdminRole.NEW)
     # total_message_count: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
