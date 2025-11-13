@@ -7,6 +7,7 @@
         "reviewsdelete",
         "reviewssure",
         "reviewsure",
+        "sciencefiction",
         "superadmin"
     ],
     "python-envs.defaultEnvManager": "ms-python.python:system",

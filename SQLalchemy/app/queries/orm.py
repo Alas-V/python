@@ -309,6 +309,78 @@ class BookQueries:
                 await session.flush()
             await session.commit()
 
+    @staticmethod
+    async def has_cover(book_id: int) -> str:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Book.book_photo_id).where(Book.book_id == book_id)
+            )
+            return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_books_for_admin() -> dict:
+        async with AsyncSessionLocal() as session:
+            try:
+                total_books_result = await session.execute(
+                    select(func.count(Book.book_id))
+                )
+                total_books = total_books_result.scalar()
+                status_count_result = await session.execute(
+                    select(Book.book_status, func.count(Book.book_id)).group_by(
+                        Book.book_status
+                    )
+                )
+                status_counts = dict(status_count_result.all())
+                genre_count_result = await session.execute(
+                    select(Book.book_genre, func.count(Book.book_id)).group_by(
+                        Book.book_genre
+                    )
+                )
+                genre_counts = dict(genre_count_result.all())
+                total_quantity_result = await session.execute(
+                    select(func.sum(Book.book_quantity))
+                )
+                total_quantity = total_quantity_result.scalar() or 0
+                on_sale_count_result = await session.execute(
+                    select(func.count(Book.book_id)).where(Book.book_on_sale)
+                )
+                on_sale_count = on_sale_count_result.scalar()
+                avg_price_result = await session.execute(
+                    select(func.avg(Book.book_price))
+                )
+                avg_price = avg_price_result.scalar() or 0
+                low_stock_result = await session.execute(
+                    select(func.count(Book.book_id)).where(Book.book_quantity < 10)
+                )
+                low_stock_count = low_stock_result.scalar()
+                recent_books_result = await session.execute(
+                    select(Book).order_by(Book.book_add_date.desc()).limit(5)
+                )
+                recent_books = recent_books_result.scalars().all()
+                return {
+                    "total_books": total_books,
+                    "status_counts": status_counts,
+                    "genre_counts": genre_counts,
+                    "total_quantity": total_quantity,
+                    "on_sale_count": on_sale_count,
+                    "avg_price": float(avg_price) if avg_price else 0,
+                    "low_stock_count": low_stock_count,
+                    "recent_books": [
+                        {
+                            "book_id": book.book_id,
+                            "title": book.book_title,
+                            "price": book.book_price,
+                            "quantity": book.book_quantity,
+                            "status": book.book_status,
+                            "genre": book.book_genre,
+                        }
+                        for book in recent_books
+                    ],
+                }
+            except Exception as e:
+                print(f"Error in get_books_for_admin: {e}")
+                return {}
+
 
 class SaleQueries:
     @staticmethod
@@ -2117,6 +2189,7 @@ class DBData:
                     author_id=random.choice(authors).author_id,
                     book_status=random.choice(list(BookStatus)),
                     book_price=random.randint(400, 3000),
+                    book_photo_id="AgACAgIAAxkBAAISfGkV5uHsE7KI41KLjrCTaTHCeedPAALhDWsb25uwSCWYDAlTnDwWAQADAgADeQADNgQ",
                     book_genre=random.choice(list(BookGenre)),
                     book_quantity=random.randint(1, 9),
                 )

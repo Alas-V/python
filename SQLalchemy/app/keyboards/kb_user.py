@@ -50,7 +50,7 @@ class UserKeyboards:
                     ),
                     InlineKeyboardButton(
                         text="🌌Научная Фантастика",
-                        callback_data="genre_science_fiction",
+                        callback_data="genre_sciencefiction",
                     ),
                 ],
                 [
@@ -80,7 +80,7 @@ class UserKeyboards:
                     ),
                     InlineKeyboardButton(
                         text="🌌Научная Фантастика",
-                        callback_data="sale_science_fiction",
+                        callback_data="sale_sciencefiction",
                     ),
                 ],
                 [

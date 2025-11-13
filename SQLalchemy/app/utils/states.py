@@ -14,6 +14,10 @@ class OrderForm(StatesGroup):
     editing_field = State()
 
 
+class BookDetailsState(StatesGroup):
+    going_to_book = State()
+
+
 class ReviewState(StatesGroup):
     rating = State()
     title = State()

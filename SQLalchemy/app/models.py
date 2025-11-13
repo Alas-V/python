@@ -18,7 +18,7 @@ from enum import Enum, IntFlag
 from datetime import datetime
 
 
-intpk = Annotated[int, mapped_column(primary_key=True)]
+intpk = Annotated[int, mapped_column(primary_key=True, autoincrement=True)]
 
 
 created_at = Annotated[
@@ -46,7 +46,7 @@ class Payment(str, Enum):
 class BookGenre(str, Enum):
     FANTASY = "fantasy"
     HORROR = "horror"
-    SCIENCE_FICTION = "science_fiction"
+    SCIENCEFICTION = "sciencefiction"
     DETECTIVE = "detective"
     CLASSIC = "classic"
     POETRY = "poetry"
@@ -137,6 +137,7 @@ class Book(Base):
         CheckConstraint("sale_value >= 0 AND sale_value <= 1"),
         server_default="0",
     )
+    book_photo_id: Mapped[str] = mapped_column(String, nullable=True)
     # 0.1 = 10%, 1 = 100%
     book_price: Mapped[int] = mapped_column(Integer, CheckConstraint("book_price >= 0"))
     book_add_date: Mapped[created_at]

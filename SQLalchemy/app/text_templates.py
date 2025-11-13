@@ -829,6 +829,69 @@ async def admin_details(admin_data: Admin, username: str = None) -> str:
     return text
 
 
+async def get_book_text_for_admin(books_data: dict) -> str:
+    total_books = books_data.get("total_books", 0)
+    status_counts = books_data.get("status_counts", {})
+    genre_counts = books_data.get("genre_counts", {})
+    total_quantity = books_data.get("total_quantity", 0)
+    on_sale_count = books_data.get("on_sale_count", 0)
+    avg_price = books_data.get("avg_price", 0)
+    low_stock_count = books_data.get("low_stock_count", 0)
+    recent_books = books_data.get("recent_books", [])
+    status_translations = {
+        "pending": "⏳ Ожидание",
+        "in stock": "✅ В наличии",
+        "out of stock": "❌ Нет в наличии",
+        "archived": "📁 В архиве",
+    }
+    genre_translations = {
+        "fantasy": "🧙 Фэнтези",
+        "horror": "👻 Ужасы",
+        "science_fiction": "🚀 Научная фантастика",
+        "detective": "🕵️ Детектив",
+        "classic": "📚 Классика",
+        "poetry": "📜 Поэзия",
+    }
+    status_text = ""
+    for status, count in status_counts.items():
+        status_name = status_translations.get(status, status)
+        status_text += f"├ {status_name}: {count} шт.\n"
+    genre_text = ""
+    for genre, count in genre_counts.items():
+        genre_name = genre_translations.get(genre, genre)
+        genre_text += f"├ {genre_name}: {count} шт.\n"
+    recent_text = ""
+    for i, book in enumerate(recent_books, 1):
+        title = book.get("title", "Без названия")
+        if len(title) > 25:
+            title = title[:22] + "..."
+        recent_text += (
+            f"{i}. {title} | {book.get('price', 0)}₽ | {book.get('quantity', 0)} шт.\n"
+        )
+
+    text = f"""<b>📚 Управление книгами</b>
+
+<b>📊 Общая статистика:</b>
+├ Всего книг: <b>{total_books} шт.</b>
+├ Общее количество на складе: <b>{total_quantity} шт.</b>
+├ Книг со скидкой: <b>{on_sale_count} шт.</b>
+├ Книг с низким запасом: <b>{low_stock_count} шт.</b>
+└ Средняя цена: <b>{avg_price:.2f}₽</b>
+
+<b>📈 Статистика по статусам:</b>
+{status_text if status_text else "├ Нет данных"}
+
+<b>🎭 Распределение по жанрам:</b>
+{genre_text if genre_text else "├ Нет данных"}
+
+<b>🆕 Последние добавленные книги:</b>
+{recent_text if recent_text else "└ Нет недавно добавленных книг"}
+
+💡 <i>Выберите действие для управления книгами</i>"""
+
+    return text
+
+
 INFOTEXT = """📚 BookStore Demo Bot
 Прототип книжного магазина с полным циклом заказа
 

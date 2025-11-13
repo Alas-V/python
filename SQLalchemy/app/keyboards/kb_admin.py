@@ -535,10 +535,33 @@ class KbAdmin:
         )
 
     @staticmethod
+    async def manage_books_menu() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📗 Добавить книгу", callback_data="admin_add_book"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="📋 Книги по жанрам", callback_data="catalog"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔍 Поиск книги", callback_data="admin_search_book"
+                    )
+                ],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")],
+            ]
+        )
+
+    @staticmethod
     async def edit_permissions_keyboard(
         current_permissions: int, temp_permissions: int = None
     ) -> InlineKeyboardMarkup:
-        builder = InlineKeyboardBuilder()
+        permissions_builder = InlineKeyboardBuilder()
         permissions_mask = (
             temp_permissions if temp_permissions is not None else current_permissions
         )
@@ -551,19 +574,21 @@ class KbAdmin:
         ]
         for permission, description in permissions_list:
             has_perm = PermissionChecker.has_permission(permissions_mask, permission)
-            icon = "✅" if has_perm else "❌"
-            builder.button(
+            icon = "➕" if has_perm else "➖"
+            permissions_builder.button(
                 text=f"{icon} {description}",
                 callback_data=f"toggle_perm_{permission.value}",
             )
-            builder.adjust(2)
+        permissions_builder.adjust(2)
+        actions_builder = InlineKeyboardBuilder()
         if temp_permissions is not None and temp_permissions != current_permissions:
-            builder.button(
+            actions_builder.button(
                 text="✅ Применить изменения", callback_data="apply_permission_changes"
             )
-        builder.button(text="🔙 Назад", callback_data="cancel_permission_edit")
-        builder.adjust(1)
-        return builder.as_markup()
+        actions_builder.button(text="🔙 Назад", callback_data="cancel_permission_edit")
+        actions_builder.adjust(1)
+        permissions_builder.attach(actions_builder)
+        return permissions_builder.as_markup()
 
     @staticmethod
     async def kb_admin_find_orders(

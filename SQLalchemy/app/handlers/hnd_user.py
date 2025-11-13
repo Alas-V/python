@@ -1,4 +1,4 @@
-from aiogram import F, Router
+from aiogram import F, Router, types
 from queries.orm import (
     OrderQueries,
     BookQueries,
@@ -18,6 +18,8 @@ from text_templates import (
     get_full_review,
     book_for_review,
 )
+from aiogram.exceptions import TelegramBadRequest
+from utils.states import BookDetailsState
 from aiogram.fsm.context import FSMContext
 import asyncio
 
@@ -39,11 +41,26 @@ async def delete_messages(bot, chat_id: int, message_ids: list):
 GENRES = {
     "fantasy": "Фэнтази🚀",
     "horror": "Ужасы👻",
-    "science_fiction": "Научная Фантастика🌌",
+    "sciencefiction": "Научная Фантастика🌌",
     "detective": "Детектив🕵️",
     "classic": "Классическая литература🎭",
     "poetry": "Поэзия✒️",
 }
+
+
+# DEBUG для получения id фото
+@user_router.message(F.content_type == "photo")
+async def get_photo_id(message: types.Message):
+    file_id = message.photo[-1].file_id
+    await message.answer(
+        f"📸 File ID этого фото:\n"
+        f"<code>{file_id}</code>\n\n"
+        f"Скопируйте этот ID для использования в вашем коде.",
+        parse_mode="HTML",
+    )
+
+
+#
 
 
 @user_router.message(CommandStart())
@@ -51,6 +68,7 @@ async def cmd_start(message: Message, state: FSMContext):
     data = await state.get_data()
     messages_to_delete = data.get("messages_to_delete", [])
     last_hint_id = data.get("last_hint_id")
+    photo_message_id = data.get("photo_message_id", [])
     if messages_to_delete:
         await delete_messages(message.bot, message.chat.id, messages_to_delete)
     if last_hint_id:
@@ -79,6 +97,12 @@ async def cmd_start(message: Message, state: FSMContext):
 
 Давай начнем! Выбери действие в меню.
     """
+    if photo_message_id:
+        bot = message.bot
+        await delete_messages(bot, message.chat.id, [photo_message_id])
+        await message.answer(text, reply_markup=await UserKeyboards.main_menu(is_admin))
+        await state.clear()
+        return
     await message.answer(text, reply_markup=await UserKeyboards.main_menu(is_admin))
 
 
@@ -87,6 +111,11 @@ async def menu(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     messages_to_delete = data.get("messages_to_delete", [])
     last_hint_id = data.get("last_hint_id")
+    photo_message_id = data.get("photo_message_id", [])
+    if messages_to_delete:
+        await delete_messages(
+            callback.message.bot, callback.message.chat.id, messages_to_delete
+        )
     if messages_to_delete:
         await delete_messages(
             callback.message.bot, callback.message.chat.id, messages_to_delete
@@ -112,6 +141,14 @@ async def menu(callback: CallbackQuery, state: FSMContext):
     📨 Поддержка        ℹ️ Информация
 """
     await callback.answer("Возвращение в Меню")
+    if photo_message_id:
+        bot = callback.message.bot
+        await delete_messages(bot, callback.message.chat.id, [photo_message_id])
+        await callback.message.answer(
+            text, reply_markup=await UserKeyboards.main_menu(is_admin)
+        )
+        await state.clear()
+        return
     await callback.message.edit_text(
         text, reply_markup=await UserKeyboards.main_menu(is_admin)
     )
@@ -207,8 +244,10 @@ async def order_detail(callback: CallbackQuery):
 
 @user_router.callback_query(F.data == "cart")
 async def cart(callback: CallbackQuery, state: FSMContext):
-    telegram_id = callback.from_user.id
+    telegram_id = int(callback.from_user.id)
     current_state = await state.get_state()
+    data = await state.get_data()
+    photo_message_id = data.get("photo_message_id", [])
     if current_state:
         data = await state.get_data()
         last_hint_id = data.get("last_hint_id")
@@ -225,6 +264,28 @@ async def cart(callback: CallbackQuery, state: FSMContext):
         list_of_books.append(books_inside)
     user_balance = await UserQueries.get_user_balance(telegram_id)
     await callback.answer("Корзина")
+    if photo_message_id:
+        bot = callback.message.bot
+        await delete_messages(bot, callback.message.chat.id, [photo_message_id])
+        if total_price > 1:
+            has_address = await OrderQueries.has_address(telegram_id)
+            if has_address:
+                main_message = await callback.message.answer(
+                    f"    🛒Корзина\n{''.join(list_of_books)}\n\n💳 Ваш баланс - {user_balance}₽\n💵 Сумма корзины -  {total_price}₽",
+                    reply_markup=await UserKeyboards.in_cart_has_address(telegram_id),
+                )
+            else:
+                main_message = await callback.message.answer(
+                    f"    🛒Корзина\n{''.join(list_of_books)}\n\n💳 Ваш баланс - {user_balance}₽\nСумма корзины -  {total_price}₽",
+                    reply_markup=await UserKeyboards.in_cart_no_address(telegram_id),
+                )
+        else:
+            main_message = await callback.message.answer(
+                f"    🛒Ваша корзина пуста!\n\n💳 Ваш баланс - {user_balance}₽",
+                reply_markup=await UserKeyboards.in_empty_cart(),
+            )
+        await state.update_data(main_message_id=main_message.message_id)
+        return
     if total_price > 1:
         has_address = await OrderQueries.has_address(telegram_id)
         if has_address:
@@ -254,22 +315,36 @@ async def sale_menu(callback: CallbackQuery):
 
 
 @user_router.callback_query(F.data.startswith("sale_"))
-async def sale_genre(callback: CallbackQuery):
+async def sale_genre(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    photo_message_id = data.get("photo_message_id", [])
     genres = callback.data.split("_")[1]
     books = await SaleQueries.get_sale_genre(genres)
     if not books:
         await callback.answer("Книг этого жанра не найдено")
         return
     genre_in_text = GENRES[genres]
+    if photo_message_id:
+        bot = callback.message.bot
+        await delete_messages(bot, callback.message.chat.id, [photo_message_id])
+        main_message = await callback.message.answer(
+            f"📚 Книги со скидкой в жанре {genre_in_text}:",
+            reply_markup=await UserKeyboards.sale_books_by_genre_keyboard(books),
+        )
+        await state.update_data(main_message_id=main_message.message_id)
+        return
     await callback.answer("")
-    await callback.message.edit_text(
+    main_message = await callback.message.edit_text(
         f"📚 Книги со скидкой в жанре {genre_in_text}:",
         reply_markup=await UserKeyboards.sale_books_by_genre_keyboard(books),
     )
+    await state.update_data(main_message_id=main_message.message_id)
 
 
 @user_router.callback_query(F.data.startswith("genre_"))
-async def classic_show_books(callback: CallbackQuery):
+async def classic_show_books(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    photo_message_id = data.get("photo_message_id", [])
     genres = callback.data.split("_")[1]
     books = await BookQueries.get_book_by_genre(genres)
     if not books:
@@ -277,60 +352,105 @@ async def classic_show_books(callback: CallbackQuery):
         return
     genre_in_text = GENRES[genres]
     await callback.answer()
-    await callback.message.edit_text(
+    if photo_message_id:
+        bot = callback.message.bot
+        await delete_messages(bot, callback.message.chat.id, [photo_message_id])
+        main_message = await callback.message.answer(
+            f"📚 Книги в жанре {genre_in_text}:",
+            reply_markup=await UserKeyboards.books_by_genre_keyboard(books),
+        )
+        await state.update_data(main_message_id=main_message.message_id)
+        return
+    main_message = await callback.message.edit_text(
         f"📚 Книги в жанре {genre_in_text}:",
         reply_markup=await UserKeyboards.books_by_genre_keyboard(books),
     )
+    await state.set_state(BookDetailsState.going_to_book)
+    await state.update_data(main_message_id=main_message.message_id)
 
 
 @user_router.callback_query(F.data.startswith("book_"))
 async def book_details(callback: CallbackQuery, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state:
-        data = await state.get_data()
-        last_hint_id = data["last_hint_id"]
-        if last_hint_id:
-            bot = callback.message.bot
-            await delete_messages(bot, callback.message.chat.id, [last_hint_id])
-        await state.clear()
-    book_id = callback.data.split("_")[1]
+    book_id = int(callback.data.split("_")[1])
+    data = await state.get_data()
+    last_hint_id = data.get("last_hint_id", [])
+    if last_hint_id:
+        bot = callback.message.bot
+        await delete_messages(bot, callback.message.chat.id, [last_hint_id])
     book_data = await BookQueries.get_book_info(book_id)
     if not book_data:
         await callback.answer(
             "Не удалось найти книгу. Повторите попытку позже", show_alert=True
         )
         return
-    if book_data["book_on_sale"]:
+    if book_data.get("book_on_sale"):
         text = await get_book_details_on_sale(book_data)
     else:
         text = await get_book_details(book_data)
     genre_in_text = GENRES[book_data["book_genre"]]
-    await callback.message.edit_text(
-        text,
-        reply_markup=await UserKeyboards.book_details(
-            book_data["book_id"],
-            book_data["book_genre"],
-            book_data["book_on_sale"],
-            genre_in_text,
-        ),
-        parse_mode="HTML",
-    )
+    book_cover = await BookQueries.has_cover(book_id)
+    if book_cover:
+        try:
+            main_message_id = data.get("main_message_id", [])
+            bot = callback.message.bot
+            await delete_messages(bot, callback.message.chat.id, [main_message_id])
+            photo_message = await callback.message.answer_photo(
+                photo=book_cover,
+                caption=text,
+                reply_markup=await UserKeyboards.book_details(
+                    book_data["book_id"],
+                    book_data["book_genre"],
+                    book_data["book_on_sale"],
+                    genre_in_text,
+                ),
+                parse_mode="HTML",
+            )
+            await state.update_data(photo_message_id=photo_message.message_id)
+            return
+        except Exception as e:
+            print(f"Ошибка при отправке фото: {e}")
+            await callback.answer(text="Произошла ошибка при загрузке обложки")
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=await UserKeyboards.book_details(
+                book_data["book_id"],
+                book_data["book_genre"],
+                book_data["book_on_sale"],
+                genre_in_text,
+            ),
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest:
+        await callback.message.answer(
+            text,
+            reply_markup=await UserKeyboards.book_details(
+                book_data["book_id"],
+                book_data["book_genre"],
+                book_data["book_on_sale"],
+                genre_in_text,
+            ),
+            parse_mode="HTML",
+        )
 
 
 @user_router.callback_query(F.data.startswith("add_to_cart_book_"))
 async def add_to_cart_book(callback: CallbackQuery):
     book_id = int(callback.data.split("_")[4])
-    telegram_id = callback.from_user.id
+    telegram_id = int(callback.from_user.id)
     await OrderQueries.add_book_to_cart(telegram_id, book_id)
     total_price, books_in_cart = await OrderQueries.get_cart_total(telegram_id)
+    total_books_count = sum(book["quantity"] for book in books_in_cart)
     list_of_books = []
     for book_data in books_in_cart:
         books_inside = f"\n{book_data['book']} {book_data['quantity']}шт.  {book_data['price']}₽/шт."
         list_of_books.append(books_inside)
-    await callback.answer(
-        f"Книга успешно добавлена!\nВ вашей корзине:\n{''.join(list_of_books)}\n\nСумма корзины -  {total_price} ₽",
-        show_alert=True,
-    )
+    full_text = f"Книга успешно добавлена!\nВ вашей корзине:\n{''.join(list_of_books)}\n\nСумма корзины -  {total_price} ₽"
+    if len(full_text) > 200:
+        text = f"Книга успешно добавлена!\n📚 Книг в корзине: {total_books_count}\n💰 Сумма: {total_price}₽"
+    else:
+        text = full_text
+    await callback.answer(text, show_alert=True)
 
 
 @user_router.callback_query(F.data.startswith("delete_cart_"))
@@ -349,7 +469,9 @@ async def clean_the_cart(callback: CallbackQuery):
 
 
 @user_router.callback_query(F.data.startswith("reviews_on_book_"))
-async def reviews_first(callback: CallbackQuery):
+async def reviews_first(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    photo_message_id = data.get("photo_message_id", [])
     book_id = int(callback.data.split("_")[3])
     data = await BookQueries.get_book_reviews(book_id)
     book_info = data["book_info"]
@@ -359,12 +481,24 @@ async def reviews_first(callback: CallbackQuery):
         return
     message_text = await book_for_review(book_info)
     message_text += "\n<b>Отзывы:</b>"
-    await callback.message.edit_text(
+    if photo_message_id:
+        bot = callback.message.bot
+        await delete_messages(bot, callback.message.chat.id, [photo_message_id])
+        main_message = await callback.message.answer(
+            text=message_text,
+            reply_markup=await UserKeyboards.kb_reviews(book_id, reviews),
+            parse_mode="HTML",
+        )
+        await callback.answer()
+        await state.update_data(main_message_id=main_message.message_id)
+        return
+    main_message = await callback.message.edit_text(
         text=message_text,
         reply_markup=await UserKeyboards.kb_reviews(book_id, reviews),
         parse_mode="HTML",
     )
     await callback.answer()
+    await state.update_data(main_message_id=main_message.message_id)
 
 
 @user_router.callback_query(F.data.startswith("review_"))

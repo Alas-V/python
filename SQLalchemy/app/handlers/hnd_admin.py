@@ -25,6 +25,7 @@ from text_templates import (
     admin_list_text,
     admin_details,
     format_admin_permissions_text,
+    get_book_text_for_admin,
 )
 from utils.states import (
     AdminSupportState,
@@ -1106,7 +1107,7 @@ async def admin_main_control_admins(
 
 @admin_router.callback_query(F.data == "admin_see_admins")
 @admin_required
-async def admin_add_new_admin(
+async def admin_see_admins(
     callback: CallbackQuery,
     state: FSMContext,
     bot: Bot,
@@ -1594,6 +1595,63 @@ async def cancel_permission_edit(
     except Exception as e:
         print(f"Error in cancel_permission_edit: {e}")
         await callback.answer("❌ Ошибка при отмене", show_alert=True)
+        await state.clear()
+
+
+@admin_router.callback_query(F.data == "admin_add_new_admin")
+@admin_required
+async def admin_add_new_admin(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        pass
+    except Exception as e:
+        print(f"Error in cancel_permission_edit: {e}")
+        await callback.answer(
+            "❌ Ошибка при добавление администратора", show_alert=True
+        )
+        await state.clear()
+
+
+@admin_router.callback_query(F.data == "admin_main_control_books")
+@admin_required
+async def admin_main_control_books(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        books_data = await BookQueries.get_books_for_admin()
+        books_text_statistic = await get_book_text_for_admin(books_data)
+        await callback.message.edit_text(
+            text=books_text_statistic,
+            reply_markup=await KbAdmin.manage_books_menu(),
+            parse_mode="HTML",
+        )
+        await callback.answer()
+    except Exception as e:
+        print(f"Error in cancel_permission_edit: {e}")
+        await callback.answer(
+            "❌ Ошибка при открытие информации о книгах", show_alert=True
+        )
         await state.clear()
 
 
