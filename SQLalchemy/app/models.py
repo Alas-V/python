@@ -138,6 +138,7 @@ class Book(Base):
         CheckConstraint("sale_value >= 0 AND sale_value <= 1"),
         server_default="0",
     )
+    book_in_stock: Mapped[bool] = mapped_column(Boolean, server_default=text("FALSE"))
     book_photo_id: Mapped[str] = mapped_column(String, nullable=True)
     # 0.1 = 10%, 1 = 100%
     book_price: Mapped[int] = mapped_column(Integer, CheckConstraint("book_price >= 0"))
@@ -182,7 +183,7 @@ class User(Base):
     registration_date: Mapped[created_at]
     user_balance: Mapped[Numeric] = mapped_column(
         Numeric(10, 2),
-        default=5000,
+        default=50000,
     )
     reviews: Mapped[List["Review"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

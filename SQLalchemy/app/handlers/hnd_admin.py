@@ -34,6 +34,7 @@ from utils.states import (
     EditAdminPermissions,
     AdminAddNewAdmin,
     AdminSearchAdminByUsername,
+    AdminAddNewBook,
 )
 from models import AppealStatus, AdminPermission, OrderStatus, AdminRole
 import asyncio
@@ -78,26 +79,29 @@ def admin_required(handler):
 
 def get_role_by_permissions(permissions: int) -> tuple[str, str]:
     """
-    Автоматически определяет роль и название на основе прав
-    Возвращает (role_key, role_name)
+    Определяет роль по весу наивысшего права
     """
-    if permissions == AdminPermission.SUPER_ADMIN_PERMS:
-        return AdminRole.SUPER_ADMIN, "superadmin"
-    elif permissions == AdminPermission.ADMIN_PERMS:
-        return AdminRole.ADMIN, "admin"
-    elif permissions == AdminPermission.MANAGER_PERMS:
-        return AdminRole.MANAGER, "manager"
-    elif permissions == AdminPermission.MODERATOR_PERMS:
-        return AdminRole.MODERATOR, "moderator"
+    permission_weights = {
+        AdminPermission.MANAGE_ADMINS: (AdminRole.SUPER_ADMIN, "superadmin"),
+        AdminPermission.VIEW_STATS: (AdminRole.SUPER_ADMIN, "superadmin"),
+        AdminPermission.MANAGE_BOOKS: (AdminRole.ADMIN, "admin"),
+        AdminPermission.MANAGE_ORDERS: (AdminRole.MANAGER, "manager"),
+        AdminPermission.MANAGE_SUPPORT: (AdminRole.MODERATOR, "moderator"),
+    }
+    highest_permission = AdminPermission.NONE
+    for perm in [
+        AdminPermission.MANAGE_ADMINS,
+        AdminPermission.VIEW_STATS,
+        AdminPermission.MANAGE_BOOKS,
+        AdminPermission.MANAGE_ORDERS,
+        AdminPermission.MANAGE_SUPPORT,
+    ]:
+        if permissions & perm:
+            highest_permission = max(highest_permission, perm, key=lambda x: x.value)
+    if highest_permission in permission_weights:
+        return permission_weights[highest_permission]
     else:
-        if permissions & AdminPermission.MANAGE_ADMINS:
-            return AdminRole.ADMIN, "admin"
-        elif permissions & (
-            AdminPermission.MANAGE_ORDERS | AdminPermission.MANAGE_BOOKS
-        ):
-            return AdminRole.MANAGER, "manager"
-        else:
-            return AdminRole.MODERATOR, "moderator"
+        return AdminRole.NEW, "new"
 
 
 async def send_admin_new_permission_notification(
@@ -1594,11 +1598,9 @@ async def apply_permission_changes(
                 ),
                 parse_mode="HTML",
             )
-            await callback.answer(
-                f"✅ Права обновлены! Роль: {role_name}", show_alert=True
-            )
+            await callback.answer("✅ Права обновлены!", show_alert=True)
             await send_admin_new_permission_notification(
-                bot, admin_data.telegram_id, temp_permissions, role_name
+                bot, admin_data.telegram_id, temp_permissions
             )
         else:
             await callback.answer("❌ Ошибка при обновлении прав", show_alert=True)
@@ -1730,38 +1732,6 @@ async def made_new_admin(
         await state.clear()
 
 
-@admin_router.callback_query(F.data == "admin_main_control_books")
-@admin_required
-async def admin_main_control_books(
-    callback: CallbackQuery,
-    state: FSMContext,
-    bot: Bot,
-    is_admin: bool,
-    admin_permissions: int,
-    admin_name: str,
-):
-    if not PermissionChecker.has_permission(
-        admin_permissions, AdminPermission.MANAGE_BOOKS
-    ):
-        await callback.answer("❌ Недостаточно прав", show_alert=True)
-        return
-    try:
-        books_data = await BookQueries.get_books_for_admin()
-        books_text_statistic = await get_book_text_for_admin(books_data)
-        await callback.message.edit_text(
-            text=books_text_statistic,
-            reply_markup=await KbAdmin.manage_books_menu(),
-            parse_mode="HTML",
-        )
-        await callback.answer()
-    except Exception as e:
-        print(f"admin_main_control_books: {e}")
-        await callback.answer(
-            "❌ Ошибка при открытие информации о книгах", show_alert=True
-        )
-        await state.clear()
-
-
 @admin_router.callback_query(F.data == "admin_search_admin_by_username")
 @admin_required
 async def admin_search_admin_by_username(
@@ -1796,60 +1766,125 @@ async def admin_search_admin_by_username(
         await state.clear()
 
 
-@admin_router.message(AdminSearchAdminByUsername.waiting_for_username, F.text)
+@admin_router.callback_query(F.data == "admin_main_control_books")
 @admin_required
-async def AdminSearchAdminByUsername_waiting_for_username(
-    message: Message,
+async def admin_main_control_books(
+    callback: CallbackQuery,
     state: FSMContext,
     bot: Bot,
     is_admin: bool,
     admin_permissions: int,
     admin_name: str,
 ):
-    data = await state.get_data()
-    main_message_id = data.get("main_message_id")
-    chat_id = data.get("chat_id")
-    try:
-        await message.delete()
-    except Exception as e:
-        print(f"Не удалось удалить сообщение пользователя: {e}")
-    username = message.text.strip()
-    if not username:
-        hint_message = await message.answer(
-            text="❌ Username не может быть пустым. Попробуйте еще раз:"
-        )
-        await state.update_data(last_hint_id=hint_message.message_id)
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
-    if not username.startswith("@"):
-        username = f"@{username}"
     try:
-        admin = await AdminQueries.get_admin_by_username(username)
-        admin_detailed_text = await admin_details(admin, username)
-        admin_role = await AdminQueries.get_admin_role_by_admin_id(admin.admin_id)
-        rights = {
-            AdminRole.SUPER_ADMIN: "superadmin",
-            AdminRole.ADMIN: "admin",
-            AdminRole.MANAGER: "manager",
-            AdminRole.MODERATOR: "moderator",
-            AdminRole.NEW: "new",
-            AdminRole.DELETED: "deleted",
-        }
-        main_message = await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=main_message_id,
-            text=admin_detailed_text,
-            reply_markup=await KbAdmin.in_admin_details(
-                admin.admin_id, admin_role=rights.get(admin_role, "Не найдена")
-            ),
+        books_data = await BookQueries.get_books_for_admin()
+        books_text_statistic = await get_book_text_for_admin(books_data)
+        await callback.message.edit_text(
+            text=books_text_statistic,
+            reply_markup=await KbAdmin.manage_books_menu(),
             parse_mode="HTML",
         )
+        await callback.answer()
+    except Exception as e:
+        print(f"admin_main_control_books: {e}")
+        await callback.answer(
+            "❌ Ошибка при открытие информации о книгах", show_alert=True
+        )
+        await state.clear()
+
+
+@admin_router.callback_query(F.data == "admin_add_book")
+@admin_required
+async def admin_add_book(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        main_message = await callback.message.edit_text(
+            text="Введите Автора Книги:\n\n<i>Если автор уже был добавлен ранее, то он откроется автоматически</i>",
+            reply_markup=await KbAdmin.back_to_books_menu(),
+            parse_mode="HTML",
+        )
+        await state.set_state(AdminAddNewBook.waiting_for_author_name)
         await state.update_data(
-            main_message_id=main_message.message_id, current_admin_id=admin.admin_id
+            main_message_id=main_message.message_id, chat_id=callback.message.chat.id
         )
         return
     except Exception as e:
-        print(f"admin_search_admin_by_username: {e}")
-        print("❌ Ошибка AdminSearchAdminByUsername.waiting_for_username")
+        print(f"Ошибка admin_add_book: {e}")
+        return
+
+
+@admin_router.callback_query(F.data.startswith("admin_choose_author_for_new_book_"))
+@admin_required
+async def admin_choose_author_for_new_book(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    author_id = int(callback.data.split("_")[-1])
+    try:
+        book_id = await BookQueries.made_book_with_admin_id_get_book_id(author_id)
+        book_data = await BookQueries.get_book_info(book_id)
+        book_text = await get_book_text_for_adding(book_data)
+        main_message = await callback.message.edit_text(
+            text=book_text,
+            reply_markup=await KbAdmin.kb_add_new_book(),
+            parse_mode="HTML",
+        )
+        await state.set_state(AdminAddNewBook.waiting_for_book_title)
+        await state.updata_data(
+            main_message_id=main_message.message_id,
+            chat_id=callback.message.chat.id,
+            book_id=book_id,
+        )
+        await callback.answer()
+    except Exception as e:
+        print(f"Ошибка admin_choose_author_for_new_book_: {e}")
+        return
+
+
+# important
+# no kb_add_new_book() and get_book_text_for_adding(book_data)
+
+
+# TODO
+@admin_router.callback_query(F.data.startswith("admin_book_settings_"))
+@admin_required
+async def admin_book_settings_(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    pass
 
 
 # FMScontext hnd
@@ -2452,3 +2487,110 @@ async def waiting_for_username(
         )
         await state.clear()
         return
+
+
+@admin_router.message(AdminSearchAdminByUsername.waiting_for_username, F.text)
+@admin_required
+async def AdminSearchAdminByUsername_waiting_for_username(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    chat_id = data.get("chat_id")
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение пользователя: {e}")
+    username = message.text.strip()
+    if not username:
+        hint_message = await message.answer(
+            text="❌ Username не может быть пустым. Попробуйте еще раз:"
+        )
+        await state.update_data(last_hint_id=hint_message.message_id)
+        return
+    if not username.startswith("@"):
+        username = f"@{username}"
+    try:
+        admin = await AdminQueries.get_admin_by_username(username)
+        admin_detailed_text = await admin_details(admin, username)
+        admin_role = await AdminQueries.get_admin_role_by_admin_id(admin.admin_id)
+        rights = {
+            AdminRole.SUPER_ADMIN: "superadmin",
+            AdminRole.ADMIN: "admin",
+            AdminRole.MANAGER: "manager",
+            AdminRole.MODERATOR: "moderator",
+            AdminRole.NEW: "new",
+            AdminRole.DELETED: "deleted",
+        }
+        main_message = await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=main_message_id,
+            text=admin_detailed_text,
+            reply_markup=await KbAdmin.in_admin_details(
+                admin.admin_id, admin_role=rights.get(admin_role, "Не найдена")
+            ),
+            parse_mode="HTML",
+        )
+        await state.update_data(
+            main_message_id=main_message.message_id, current_admin_id=admin.admin_id
+        )
+        return
+    except Exception as e:
+        print(f"admin_search_admin_by_username: {e}")
+        print("❌ Ошибка AdminSearchAdminByUsername.waiting_for_username")
+
+
+@admin_router.message(AdminAddNewBook.waiting_for_author_name, F.text)
+@admin_required
+async def AdminAddNewBook_waiting_for_author_name(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    chat_id = data.get("chat_id")
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение пользователя: {e}")
+    raw_author_name = message.text.strip()
+    author = await AdminQueries.check_if_author_exist(raw_author_name)
+    if author:
+        main_message = await bot.edit_message_text(
+            message_id=main_message_id,
+            chat_id=chat_id,
+            text=f"Выберите автора из предложенных по вашему запросу: {raw_author_name}.\n\n<i>Или создайте нового автора</i>",
+            reply_markup=await KbAdmin.choose_author_for_new_book(
+                author, raw_author_name
+            ),
+            parse_mode="HTML",
+        )
+        await state.clear()
+        await state.update_data(
+            author_name=raw_author_name,
+            main_message_id=main_message.message_id,
+            chat_id=chat_id,
+        )
+        return
+    main_message = await bot.edit_message_text(
+        message_id=main_message_id,
+        chat_id=chat_id,
+        text=f"Не удалось найти автора по вашему запросу: {raw_author_name}.\n\n<i>Проверьте корректность ввода или создайте нового автора</i>",
+        reply_markup=await KbAdmin.author_not_found_made_new(raw_author_name),
+        parse_mode="HTML",
+    )
+    await state.clear()
+    await state.update_data(
+        author_name=raw_author_name,
+        main_message_id=main_message.message_id,
+        chat_id=chat_id,
+    )

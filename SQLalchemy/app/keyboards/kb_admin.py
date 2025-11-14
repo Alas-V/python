@@ -584,6 +584,19 @@ class KbAdmin:
         )
 
     @staticmethod
+    async def back_to_books_menu() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад ",
+                        callback_data="admin_main_control_books",
+                    )
+                ]
+            ]
+        )
+
+    @staticmethod
     async def add_new_admin_go_back() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
@@ -626,7 +639,62 @@ class KbAdmin:
                         text="🔍 Поиск книги", callback_data="admin_search_book"
                     )
                 ],
-                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")],
+            ]
+        )
+
+    @staticmethod
+    async def choose_author_for_new_book(
+        authors: dict, raw_author_name: str
+    ) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+        for author in authors:
+            author_id = author.get("author_id")
+            author_name = author.get("author_name")
+            author_country = author.get("author_country")
+            button_text = f"{author_name} | 🌎{author_country} "
+            if len(button_text) > 40:
+                button_text = button_text[:37] + "..."
+            builder.button(
+                text=button_text,
+                callback_data=f"admin_choose_author_for_new_book_{author_id}",
+            )
+        new_author_text = f"➕ Добавить нового автора {raw_author_name}"
+        if len(new_author_text) > 40:
+            new_author_text = new_author_text[:37] + "..."
+        builder.adjust(1)
+        builder.row(
+            InlineKeyboardButton(
+                text=new_author_text,
+                callback_data="admin_made_new_author",
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data="admin_add_book",
+            )
+        )
+        return builder.as_markup()
+
+    @staticmethod
+    async def author_not_found_made_new(raw_author_name: str) -> InlineKeyboardMarkup:
+        new_author_text = f"➕ Добавить нового автора {raw_author_name}"
+        if len(new_author_text) > 40:
+            new_author_text = new_author_text[:37] + "..."
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=new_author_text, callback_data="admin_made_new_author"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад",
+                        callback_data="admin_add_book",
+                    )
+                ],
             ]
         )
 

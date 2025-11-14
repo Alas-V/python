@@ -18,10 +18,11 @@ from text_templates import (
     get_full_review,
     book_for_review,
 )
+from models import AdminPermission
 from aiogram.exceptions import TelegramBadRequest
 from utils.states import BookDetailsState
+from utils.admin_utils import PermissionChecker
 from aiogram.fsm.context import FSMContext
-import asyncio
 
 user_router = Router()
 
@@ -393,6 +394,14 @@ async def book_details(callback: CallbackQuery, state: FSMContext):
         try:
             main_message_id = data.get("main_message_id", [])
             bot = callback.message.bot
+            telegram_id = int(callback.from_user.id)
+            admin = await AdminQueries.is_user_admin(telegram_id)
+            if admin:
+                can_manage_book_data = PermissionChecker.has_permission(
+                    admin.permissions, AdminPermission.MANAGE_BOOKS
+                )
+            else:
+                can_manage_book_data = False
             await delete_messages(bot, callback.message.chat.id, [main_message_id])
             photo_message = await callback.message.answer_photo(
                 photo=book_cover,
@@ -402,6 +411,7 @@ async def book_details(callback: CallbackQuery, state: FSMContext):
                     book_data["book_genre"],
                     book_data["book_on_sale"],
                     genre_in_text,
+                    can_manage_book_data,
                 ),
                 parse_mode="HTML",
             )
@@ -411,6 +421,13 @@ async def book_details(callback: CallbackQuery, state: FSMContext):
             print(f"Ошибка при отправке фото: {e}")
             await callback.answer(text="Произошла ошибка при загрузке обложки")
     try:
+        admin = await AdminQueries.is_user_admin(telegram_id)
+        if admin:
+            can_manage_book_data = PermissionChecker.has_permission(
+                admin.permissions, AdminPermission.MANAGE_BOOKS
+            )
+        else:
+            can_manage_book_data = False
         await callback.message.edit_text(
             text,
             reply_markup=await UserKeyboards.book_details(
@@ -418,10 +435,18 @@ async def book_details(callback: CallbackQuery, state: FSMContext):
                 book_data["book_genre"],
                 book_data["book_on_sale"],
                 genre_in_text,
+                can_manage_book_data,
             ),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
+        admin = await AdminQueries.is_user_admin(telegram_id)
+        if admin:
+            can_manage_book_data = PermissionChecker.has_permission(
+                admin.permissions, AdminPermission.MANAGE_BOOKS
+            )
+        else:
+            can_manage_book_data = False
         await callback.message.answer(
             text,
             reply_markup=await UserKeyboards.book_details(
@@ -429,6 +454,7 @@ async def book_details(callback: CallbackQuery, state: FSMContext):
                 book_data["book_genre"],
                 book_data["book_on_sale"],
                 genre_in_text,
+                can_manage_book_data,
             ),
             parse_mode="HTML",
         )
@@ -438,6 +464,10 @@ async def book_details(callback: CallbackQuery, state: FSMContext):
 async def add_to_cart_book(callback: CallbackQuery):
     book_id = int(callback.data.split("_")[4])
     telegram_id = int(callback.from_user.id)
+    availability = await BookQueries.check_book_availability(book_id, telegram_id)
+    if not availability["available"]:
+        await callback.answer(f"❌ {availability['message']}", show_alert=True)
+        return
     await OrderQueries.add_book_to_cart(telegram_id, book_id)
     total_price, books_in_cart = await OrderQueries.get_cart_total(telegram_id)
     total_books_count = sum(book["quantity"] for book in books_in_cart)

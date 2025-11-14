@@ -18,7 +18,7 @@ async def get_book_details(book_data: dict):
     {round(rating, 2)}⭐ 
     {book_data.get("reviews_count", 0)} отзывов
 
-💳 <b>Цена:</b> {price}₽ 
+💳 <b>Цена:</b> {int(price)}₽ 
 """
 
 
@@ -501,7 +501,8 @@ async def admin_format_order_details(order_details: dict) -> str:
         date_str = "дата неизв."
     username = user_info.get("username", "Не указан")
     if username:
-        username_link = f'<a href="tg://resolve?domain={username}">{username}</a>'
+        username = username[1:]
+        username_link = f'<a href="tg://resolve?domain={username}">@{username}</a>'
     else:
         username_link = "не указан"
     first_name = user_info.get("first_name", "Не указано")
@@ -700,7 +701,8 @@ async def admin_details(admin: Admin, username) -> str:
     telegram_id = admin.telegram_id
     permissions = admin.permissions
     if username:
-        username_link = f'<a href="tg://resolve?domain={username}">{username}</a>'
+        username = username[1:]
+        username_link = f'<a href="tg://resolve?domain={username}">@{username}</a>'
     else:
         username_link = "не указан"
     created_at = (
@@ -832,7 +834,7 @@ async def get_book_text_for_admin(books_data: dict) -> str:
     genre_translations = {
         "fantasy": "🧙 Фэнтези",
         "horror": "👻 Ужасы",
-        "science_fiction": "🚀 Научная фантастика",
+        "sciencefiction": "🚀 Научная фантастика",
         "detective": "🕵️ Детектив",
         "classic": "📚 Классика",
         "poetry": "📜 Поэзия",

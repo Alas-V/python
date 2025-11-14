@@ -165,8 +165,7 @@ class BookQueries:
                     func.avg(Review.review_rating).label("book_rating"),
                 )
                 .select_from(Book)
-                .where(and_(Book.book_genre == genre, Review.published))
-                .join(Review, Book.book_id == Review.book_id)
+                .where(and_(Book.book_genre == genre, Book.book_in_stock))
                 .group_by(Book.book_id, Book.book_title)
                 .order_by(Book.sale_value.desc(), Book.book_title)
             )
@@ -260,9 +259,51 @@ class BookQueries:
                 await session.execute(
                     update(Book)
                     .where(Book.book_id == book_id)
-                    .values(book_quantity=Book.book_quantity - quantity_to_decrease)
+                    .values(
+                        book_quantity=Book.book_quantity - quantity_to_decrease,
+                        book_in_stock=case(
+                            (Book.book_quantity - quantity_to_decrease > 0, True),
+                            else_=False,
+                        ),
+                    )
                 )
             await session.commit()
+
+    @staticmethod
+    async def check_book_availability(book_id: int, telegram_id: int) -> dict:
+        async with AsyncSessionLocal() as session:
+            book_result = await session.execute(
+                select(Book.book_quantity, Book.book_title, Book.book_in_stock).where(
+                    Book.book_id == book_id
+                )
+            )
+            book_info = book_result.first()
+            if not book_info:
+                return {"available": False, "message": "Книга не найдена"}
+            available_quantity, book_title, in_stock = book_info
+            if not in_stock or available_quantity <= 0:
+                return {
+                    "available": False,
+                    "message": f"Книга '{book_title}' закончилась на складе",
+                }
+            cart_result = await session.execute(
+                select(CartItem.quantity)
+                .join(Cart)
+                .where(
+                    and_(Cart.telegram_id == telegram_id, CartItem.book_id == book_id)
+                )
+            )
+            current_in_cart = cart_result.scalar_one_or_none() or 0
+            if current_in_cart + 1 > available_quantity:
+                return {
+                    "available": False,
+                    "message": (
+                        f"📚 К сожалению, на нашем складе только {available_quantity} экземпляров книги «{book_title}»\n\n"
+                        f"🛒 У вас уже в корзине: {current_in_cart} шт.\n"
+                    ),
+                }
+
+            return {"available": True, "book_title": book_title}
 
     @staticmethod
     async def check_books_availability(book_data) -> tuple[bool, list]:
@@ -382,6 +423,15 @@ class BookQueries:
             except Exception as e:
                 print(f"Error in get_books_for_admin: {e}")
                 return {}
+
+    @staticmethod
+    async def made_book_with_admin_id_get_book_id(author_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            book = Book(Book.author_id == author_id)
+            session.add(book)
+            await session.commit()
+            await session.refresh(book)
+            return book.book_id
 
 
 class SaleQueries:
@@ -1402,8 +1452,7 @@ class AdminQueries:
             result = await session.execute(
                 select(Admin).where(Admin.telegram_id == telegram_id)
             )
-            admin = result.scalar_one_or_none()
-            return admin is not None
+            return result.scalar_one_or_none()
 
     @staticmethod
     async def get_admin_name(telegram_id: int) -> str:
@@ -1876,6 +1925,16 @@ class AdminQueries:
             )
             return result.scalar_one_or_none()
 
+    @staticmethod
+    async def check_if_author_exist(author_name: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    Author.author_id, Author.author_name, Author.author_country
+                ).where(Author.author_name.ilike(f"%{author_name}%"))
+            )
+            return result.mappings().all()
+
 
 class StatisticsQueries:
     @staticmethod
@@ -2235,6 +2294,7 @@ class DBData:
                     book_status=random.choice(list(BookStatus)),
                     book_price=random.randint(400, 3000),
                     book_photo_id="AgACAgIAAxkBAAISfGkV5uHsE7KI41KLjrCTaTHCeedPAALhDWsb25uwSCWYDAlTnDwWAQADAgADeQADNgQ",
+                    book_in_stock=True,
                     book_genre=random.choice(list(BookGenre)),
                     book_quantity=random.randint(1, 9),
                 )

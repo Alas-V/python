@@ -148,7 +148,11 @@ class UserKeyboards:
 
     @staticmethod
     async def book_details(
-        book_id: int, book_genre: str, is_on_sale: bool, genre_in_text: str
+        book_id: int,
+        book_genre: str,
+        is_on_sale: bool,
+        genre_in_text: str,
+        can_manage_book_data: bool,
     ) -> InlineKeyboardMarkup:
         keyboard = [
             [
@@ -172,13 +176,13 @@ class UserKeyboards:
             )
         keyboard.extend(
             [
+                [InlineKeyboardButton(text="🛒Корзина", callback_data="cart")],
                 [
                     InlineKeyboardButton(
                         text=f"🔙Все книги жанра {genre_in_text}",
                         callback_data=f"genre_{book_genre}",
                     )
                 ],
-                [InlineKeyboardButton(text="🛒Корзина", callback_data="cart")],
                 [
                     InlineKeyboardButton(
                         text="🔙Главное меню", callback_data="main_menu"
@@ -186,6 +190,16 @@ class UserKeyboards:
                 ],
             ]
         )
+        if can_manage_book_data:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="⚙️ Управление товаром ",
+                        callback_data=f"admin_book_settings_{book_id}",
+                    )
+                ],
+            )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod

@@ -57,3 +57,8 @@ class AdminAddNewAdmin(StatesGroup):
 
 class AdminSearchAdminByUsername(StatesGroup):
     waiting_for_username = State()
+
+
+class AdminAddNewBook(StatesGroup):
+    waiting_for_author_name = State()
+    waiting_for_book_title = State()
