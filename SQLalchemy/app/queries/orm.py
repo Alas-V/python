@@ -44,6 +44,8 @@ admin_role_dict = {
     "admin": AdminRole.ADMIN,
     "manager": AdminRole.MANAGER,
     "moderator": AdminRole.MODERATOR,
+    "deleted": AdminRole.DELETED,
+    "new": AdminRole.NEW,
 }
 
 
@@ -1234,14 +1236,6 @@ class OrderQueries:
 
 class AdminQueries:
     @staticmethod
-    async def is_user_admin(telegram_id: int) -> bool:
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(Admin.admin_id).where(Admin.telegram_id == telegram_id)
-            )
-            return result.scalar_one_or_none()
-
-    @staticmethod
     async def set_admin_new_name(admin_id: int, admin_name: str) -> bool:
         async with AsyncSessionLocal() as session:
             await session.execute(
@@ -1265,7 +1259,7 @@ class AdminQueries:
     async def is_user_in_db(username: str):
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(User).where(User.username.ilike(f"%{username}%"))
+                select(User).where(User.username == username)
             )
             return result.scalar_one_or_none()
 
@@ -1566,7 +1560,7 @@ class AdminQueries:
             query = (
                 select(SupportAppeal)
                 .join(SupportAppeal.user)
-                .where(User.username.ilike(f"%{username}%"))
+                .where(User.username == username)
             )
             if not has_admin_permission:
                 query = query.where(SupportAppeal.assigned_admin_id == admin_id)
@@ -1604,7 +1598,7 @@ class AdminQueries:
             query = (
                 select(SupportAppeal.appeal_id)
                 .join(SupportAppeal.user)
-                .where(User.username.ilike(f"%{username}%"))
+                .where(User.username == username)
             )
             if not has_admin_permission:
                 query = query.where(SupportAppeal.assigned_admin_id == admin_id)
@@ -1640,7 +1634,9 @@ class AdminQueries:
             result = await session.execute(
                 select(func.count(Admin.admin_id)).where(
                     Admin.role_name
-                    == admin_role_dict.get(admin_lvl)  # dict on top of the all orm
+                    == admin_role_dict.get(
+                        admin_lvl
+                    )  # dict on top of the all orm queries
                 )
             )
             return result.scalar() or 0
@@ -1666,21 +1662,24 @@ class AdminQueries:
             return True
 
     @staticmethod
-    async def update_admin_permissions(admin_id: int, permissions: int) -> bool:
+    async def update_admin_permissions_and_role(
+        admin_id: int, permissions: int, role: str
+    ):
         async with AsyncSessionLocal() as session:
-            try:
-                stmt = (
-                    update(Admin)
-                    .where(Admin.admin_id == admin_id)
-                    .values(permissions=permissions)
-                )
-                await session.execute(stmt)
-                await session.commit()
-                return True
-            except Exception as e:
-                print(f"Error updating admin permissions: {e}")
-                await session.rollback()
+            admin = await session.execute(
+                select(Admin).where(Admin.admin_id == admin_id)
+            )
+            admin = admin.scalar_one_or_none()
+
+            if not admin:
                 return False
+
+            admin.permissions = permissions
+            admin.role_name = role
+            admin.updated_at = datetime.utcnow()
+
+            await session.commit()
+            return True
 
     @staticmethod
     async def get_admins_paginated(
@@ -1716,7 +1715,7 @@ class AdminQueries:
     async def get_telegram_id_by_username(username: str) -> int:
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(User.telegram_id).where(User.username.ilike(f"%{username}%"))
+                select(User.telegram_id).where(User.username == username)
             )
             return result.scalar() or 0
 
@@ -1866,6 +1865,16 @@ class AdminQueries:
             await session.execute(stmt)
             await session.commit()
             return True
+
+    @staticmethod
+    async def get_admin_by_username(username: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Admin)
+                .join(User, Admin.telegram_id == User.telegram_id)
+                .where(User.username == username)
+            )
+            return result.scalar_one_or_none()
 
 
 class StatisticsQueries:
@@ -2193,7 +2202,7 @@ class DBData:
         async with AsyncSessionLocal() as session:
             # Создаем основного пользователя и админа
             user = User(
-                username="Sentrybuster",
+                username="@sentrybuster",
                 user_first_name="Artem",
                 telegram_id=717149416,
             )

@@ -53,3 +53,7 @@ class EditAdminPermissions(StatesGroup):
 class AdminAddNewAdmin(StatesGroup):
     waiting_for_username = State()
     waiting_for_admin_name = State()
+
+
+class AdminSearchAdminByUsername(StatesGroup):
+    waiting_for_username = State()

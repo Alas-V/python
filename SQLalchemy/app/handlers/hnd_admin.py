@@ -26,7 +26,6 @@ from text_templates import (
     admin_details,
     format_admin_permissions_text,
     get_book_text_for_admin,
-    decode_permissions,
 )
 from utils.states import (
     AdminSupportState,
@@ -34,6 +33,7 @@ from utils.states import (
     AdminReasonToCancellation,
     EditAdminPermissions,
     AdminAddNewAdmin,
+    AdminSearchAdminByUsername,
 )
 from models import AppealStatus, AdminPermission, OrderStatus, AdminRole
 import asyncio
@@ -74,6 +74,60 @@ def admin_required(handler):
         return await handler(event, *args, **kwargs)
 
     return wrapper
+
+
+def get_role_by_permissions(permissions: int) -> tuple[str, str]:
+    """
+    Автоматически определяет роль и название на основе прав
+    Возвращает (role_key, role_name)
+    """
+    if permissions == AdminPermission.SUPER_ADMIN_PERMS:
+        return AdminRole.SUPER_ADMIN, "superadmin"
+    elif permissions == AdminPermission.ADMIN_PERMS:
+        return AdminRole.ADMIN, "admin"
+    elif permissions == AdminPermission.MANAGER_PERMS:
+        return AdminRole.MANAGER, "manager"
+    elif permissions == AdminPermission.MODERATOR_PERMS:
+        return AdminRole.MODERATOR, "moderator"
+    else:
+        if permissions & AdminPermission.MANAGE_ADMINS:
+            return AdminRole.ADMIN, "admin"
+        elif permissions & (
+            AdminPermission.MANAGE_ORDERS | AdminPermission.MANAGE_BOOKS
+        ):
+            return AdminRole.MANAGER, "manager"
+        else:
+            return AdminRole.MODERATOR, "moderator"
+
+
+async def send_admin_new_permission_notification(
+    bot: Bot, user_telegram_id: int, new_permission
+) -> bool:
+    try:
+        text = "Ваши права администратора были изменены: \n\n 🔑 Доступные права:\n"
+        permissions_mask = (
+            new_permission if new_permission is not None else "Нет новых прав"
+        )
+        permissions_list = [
+            (AdminPermission.MANAGE_SUPPORT, "📞 Управление поддержкой"),
+            (AdminPermission.MANAGE_ORDERS, "📦 Управление заказами"),
+            (AdminPermission.MANAGE_BOOKS, "📚 Управление книгами"),
+            (AdminPermission.VIEW_STATS, "📊 Просмотр статистики"),
+            (AdminPermission.MANAGE_ADMINS, "👑 Управление администраторами"),
+        ]
+        for permission, description in permissions_list:
+            if PermissionChecker.has_permission(permissions_mask, permission):
+                text += f"├ {description} ✅\n"
+        await bot.send_message(
+            chat_id=user_telegram_id,
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=await KbAdmin.open_main_menu(),
+        )
+        return True
+    except Exception as e:
+        print(f"Error in send_admin_new_permission_notification: {e}")
+        return
 
 
 async def send_user_msg(
@@ -1494,36 +1548,6 @@ async def toggle_permission(
         await callback.answer("❌ Ошибка при изменении права", show_alert=True)
 
 
-async def send_admin_new_permission_notification(
-    bot: Bot, user_telegram_id: int, new_permission
-) -> bool:
-    try:
-        text = "Ваши права администратора были изменены: \n"
-        permissions_mask = (
-            new_permission if new_permission is not None else "Нет новых прав"
-        )
-        permissions_list = [
-            (AdminPermission.MANAGE_SUPPORT, "📞 Управление поддержкой"),
-            (AdminPermission.MANAGE_ORDERS, "📦 Управление заказами"),
-            (AdminPermission.MANAGE_BOOKS, "📚 Управление книгами"),
-            (AdminPermission.VIEW_STATS, "📊 Просмотр статистики"),
-            (AdminPermission.MANAGE_ADMINS, "👑 Управление администраторами"),
-        ]
-        for permission, description in permissions_list:
-            if PermissionChecker.has_permission(permissions_mask, permission):
-                text += f"├ {description} ✅\n"
-        await bot.send_message(
-            chat_id=user_telegram_id,
-            text=text,
-            parse_mode="Markdown",
-            reply_markup=await KbAdmin.open_main_menu(),
-        )
-        return True
-    except Exception as e:
-        print(f"Error in send_admin_new_permission_notification: {e}")
-        return
-
-
 @admin_router.callback_query(F.data == "apply_permission_changes")
 @admin_required
 async def apply_permission_changes(
@@ -1545,8 +1569,9 @@ async def apply_permission_changes(
         temp_permissions = data.get("temp_permissions")
         original_message_id = data.get("original_message_id")
         chat_id = data.get("chat_id")
-        success = await AdminQueries.update_admin_permissions(
-            admin_id, temp_permissions
+        role_key, role_name = get_role_by_permissions(temp_permissions)
+        success = await AdminQueries.update_admin_permissions_and_role(
+            admin_id, temp_permissions, role_key
         )
         if success:
             admin_data = await AdminQueries.get_admin_by_id(admin_id)
@@ -1559,25 +1584,21 @@ async def apply_permission_changes(
                 admin_data.telegram_id
             )
             admin_detailed_text = await admin_details(admin_data, username)
-            admin_role = await AdminQueries.get_admin_role_by_admin_id(admin_id)
-            rights = {
-                AdminRole.SUPER_ADMIN: "superadmin",
-                AdminRole.ADMIN: "admin",
-                AdminRole.MANAGER: "manager",
-                AdminRole.MODERATOR: "moderator",
-            }
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=original_message_id,
                 text=admin_detailed_text,
                 reply_markup=await KbAdmin.in_admin_details(
-                    admin_id, admin_role=rights.get(admin_role, "Не найдена")
+                    admin_id,
+                    admin_role=role_name,
                 ),
                 parse_mode="HTML",
             )
-            await callback.answer("✅ Права успешно обновлены!", show_alert=True)
+            await callback.answer(
+                f"✅ Права обновлены! Роль: {role_name}", show_alert=True
+            )
             await send_admin_new_permission_notification(
-                bot, admin_data.telegram_id, temp_permissions
+                bot, admin_data.telegram_id, temp_permissions, role_name
             )
         else:
             await callback.answer("❌ Ошибка при обновлении прав", show_alert=True)
@@ -1739,6 +1760,96 @@ async def admin_main_control_books(
             "❌ Ошибка при открытие информации о книгах", show_alert=True
         )
         await state.clear()
+
+
+@admin_router.callback_query(F.data == "admin_search_admin_by_username")
+@admin_required
+async def admin_search_admin_by_username(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_ADMINS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        main_message = await callback.message.edit_text(
+            text="Введите @username администратора для поиска:",
+            reply_markup=await KbAdmin.add_new_admin_go_back(),
+        )
+        await state.set_state(AdminSearchAdminByUsername.waiting_for_username)
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            chat_id=callback.message.chat.id,
+        )
+        await callback.answer()
+    except Exception as e:
+        print(f"admin_search_admin_by_username: {e}")
+        await callback.answer(
+            "❌ Ошибка при попытке инициализации поиска администратора", show_alert=True
+        )
+        await state.clear()
+
+
+@admin_router.message(AdminSearchAdminByUsername.waiting_for_username, F.text)
+@admin_required
+async def AdminSearchAdminByUsername_waiting_for_username(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    chat_id = data.get("chat_id")
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение пользователя: {e}")
+    username = message.text.strip()
+    if not username:
+        hint_message = await message.answer(
+            text="❌ Username не может быть пустым. Попробуйте еще раз:"
+        )
+        await state.update_data(last_hint_id=hint_message.message_id)
+        return
+    if not username.startswith("@"):
+        username = f"@{username}"
+    try:
+        admin = await AdminQueries.get_admin_by_username(username)
+        admin_detailed_text = await admin_details(admin, username)
+        admin_role = await AdminQueries.get_admin_role_by_admin_id(admin.admin_id)
+        rights = {
+            AdminRole.SUPER_ADMIN: "superadmin",
+            AdminRole.ADMIN: "admin",
+            AdminRole.MANAGER: "manager",
+            AdminRole.MODERATOR: "moderator",
+            AdminRole.NEW: "new",
+            AdminRole.DELETED: "deleted",
+        }
+        main_message = await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=main_message_id,
+            text=admin_detailed_text,
+            reply_markup=await KbAdmin.in_admin_details(
+                admin.admin_id, admin_role=rights.get(admin_role, "Не найдена")
+            ),
+            parse_mode="HTML",
+        )
+        await state.update_data(
+            main_message_id=main_message.message_id, current_admin_id=admin.admin_id
+        )
+        return
+    except Exception as e:
+        print(f"admin_search_admin_by_username: {e}")
+        print("❌ Ошибка AdminSearchAdminByUsername.waiting_for_username")
 
 
 # FMScontext hnd
@@ -2000,8 +2111,8 @@ async def username_to_find(
         )
         await state.update_data(last_hint_id=hint_message.message_id)
         return
-    if username.startswith("@"):
-        username = username[1:]
+    if not username.startswith("@"):
+        username = f"@{username}"
     telegram_id = int(message.from_user.id)
     admin = await AdminQueries.get_admin_by_telegram_id(telegram_id)
     has_admin_permission = PermissionChecker.has_permission(
@@ -2266,8 +2377,8 @@ async def waiting_for_username(
     except Exception as e:
         print(f"Не удалось удалить сообщение пользователя: {e}")
     username = message.text.strip()
-    if username.startswith("@"):
-        username = username[1:]
+    if not username.startswith("@"):
+        username = f"@{username}"
     user = await AdminQueries.is_user_in_db(username)
     if not user:
         try:

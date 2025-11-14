@@ -501,7 +501,7 @@ async def admin_format_order_details(order_details: dict) -> str:
         date_str = "дата неизв."
     username = user_info.get("username", "Не указан")
     if username:
-        username_link = f'<a href="tg://resolve?domain={username}">@{username}</a>'
+        username_link = f'<a href="tg://resolve?domain={username}">{username}</a>'
     else:
         username_link = "не указан"
     first_name = user_info.get("first_name", "Не указано")
@@ -700,7 +700,7 @@ async def admin_details(admin: Admin, username) -> str:
     telegram_id = admin.telegram_id
     permissions = admin.permissions
     if username:
-        username_link = f'<a href="tg://resolve?domain={username}">@{username}</a>'
+        username_link = f'<a href="tg://resolve?domain={username}">{username}</a>'
     else:
         username_link = "не указан"
     created_at = (

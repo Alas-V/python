@@ -139,8 +139,14 @@ class KbAdmin:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="🔎 Просмотр Администраторов",
+                        text="🔎 Просмотр администраторов",
                         callback_data="admin_see_admins",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔎 Поиск администратора по @username ",
+                        callback_data="admin_search_admin_by_username",
                     )
                 ],
                 [
@@ -181,6 +187,16 @@ class KbAdmin:
                 [
                     InlineKeyboardButton(
                         text="🔧  Модераторы", callback_data="show_admin_moderator"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🆕 Не выданы права", callback_data="show_admin_new"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🗑️ Удалённые", callback_data="show_admin_deleted"
                     )
                 ],
                 [
