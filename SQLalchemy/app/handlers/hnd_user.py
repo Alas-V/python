@@ -503,32 +503,41 @@ async def reviews_first(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     photo_message_id = data.get("photo_message_id", [])
     book_id = int(callback.data.split("_")[3])
-    data = await BookQueries.get_book_reviews(book_id)
-    book_info = data["book_info"]
-    reviews = data["reviews"]
-    if not book_info:
-        await callback.message.answer("Книга не найдена")
-        return
-    message_text = await book_for_review(book_info)
-    message_text += "\n<b>Отзывы:</b>"
-    if photo_message_id:
-        bot = callback.message.bot
-        await delete_messages(bot, callback.message.chat.id, [photo_message_id])
-        main_message = await callback.message.answer(
+    try:
+        data = await BookQueries.get_book_reviews(book_id)
+        book_info = data["book_info"]
+        reviews = data["reviews"]
+        if not book_info:
+            await callback.message.answer("❌ Книга не найдена")
+            return
+        message_text = await book_for_review(book_info)
+        if not reviews:
+            message_text += "\n📝 <b>Отзывов пока нет</b>\n\n💡 Будьте первым, кто оставит отзыв об этой книге!"
+        else:
+            message_text += "\n<b>📖 Отзывы читателей:</b>"
+        if photo_message_id:
+            bot = callback.message.bot
+            await delete_messages(bot, callback.message.chat.id, [photo_message_id])
+            main_message = await callback.message.answer(
+                text=message_text,
+                reply_markup=await UserKeyboards.kb_reviews(book_id, reviews),
+                parse_mode="HTML",
+            )
+            await callback.answer()
+            await state.update_data(main_message_id=main_message.message_id)
+            return
+        main_message = await callback.message.edit_text(
             text=message_text,
             reply_markup=await UserKeyboards.kb_reviews(book_id, reviews),
             parse_mode="HTML",
         )
         await callback.answer()
         await state.update_data(main_message_id=main_message.message_id)
-        return
-    main_message = await callback.message.edit_text(
-        text=message_text,
-        reply_markup=await UserKeyboards.kb_reviews(book_id, reviews),
-        parse_mode="HTML",
-    )
-    await callback.answer()
-    await state.update_data(main_message_id=main_message.message_id)
+    except Exception as e:
+        print(f"Ошибка в reviews_first: {e}")
+        await callback.answer(
+            "❌ Произошла ошибка при загрузке отзывов", show_alert=True
+        )
 
 
 @user_router.callback_query(F.data.startswith("review_"))

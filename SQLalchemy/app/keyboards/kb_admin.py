@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from utils.admin_utils import PermissionChecker
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from models import AdminPermission, AppealStatus, OrderStatus
+from models import AdminPermission, AppealStatus, OrderStatus, BookGenre
 from datetime import datetime
 
 status_dict = {
@@ -621,6 +621,19 @@ class KbAdmin:
         )
 
     @staticmethod
+    async def add_cover_or_skip(book_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Пропустить ➡️",
+                        callback_data=f"admin_skip_cover_add_{book_id}",
+                    )
+                ]
+            ]
+        )
+
+    @staticmethod
     async def manage_books_menu() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
@@ -697,6 +710,25 @@ class KbAdmin:
                 ],
             ]
         )
+
+    @staticmethod
+    async def choose_genre_for_new_book(book_id: int) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+        genre_dict = {
+            BookGenre.FANTASY: "🚀 Фэнтази",
+            BookGenre.HORROR: "👻 Ужасы",
+            BookGenre.SCIENCEFICTION: "🌌 Научная фантастика",
+            BookGenre.DETECTIVE: "🕵️ Детектив",
+            BookGenre.CLASSIC: "🎭 Классическая литература",
+            BookGenre.POETRY: "✒️ Поэзия",
+        }
+        for genre_enum, button_text in genre_dict.items():
+            builder.button(
+                text=button_text,
+                callback_data=f"admin_add_genre_to_new_book_{genre_enum.value}_{book_id}",
+            )
+        builder.adjust(2)
+        return builder.as_markup()
 
     @staticmethod
     async def edit_permissions_keyboard(
@@ -913,6 +945,36 @@ class KbAdmin:
                 ]
             ]
         )
+
+    @staticmethod
+    async def kb_add_new_book(
+        book_id: int, book_done: bool = False
+    ) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="✏️ Редактировать книгу",
+                    callback_data=f"admin_change_book_{book_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отменить редактирование и удалить книгу",
+                    callback_data=f"cancel_admin_adding_book_{book_id}",
+                )
+            ],
+        ]
+        if book_done:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="✅ Закончить редактирование и опубликовать",
+                        callback_data=f"admin_book_publishing_{book_id}",
+                    )
+                ],
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
     async def universal_appeals_keyboard(

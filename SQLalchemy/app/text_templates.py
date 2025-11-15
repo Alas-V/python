@@ -43,6 +43,54 @@ async def get_book_details_on_sale(book_data: dict):
 """
 
 
+async def get_book_text_for_adding(book_data: dict) -> str:
+    raw_title = book_data.get("book_title")
+    raw_author = book_data.get("author_name")
+    raw_year = book_data.get("book_year")
+    raw_quantity = book_data.get("book_quantity")
+    raw_price = book_data.get("book_price")
+    raw_genre = book_data.get("book_genre")
+    title = raw_title or "Не указан"
+    author = raw_author or "Не указан"
+    year = f"{raw_year} г." if raw_year is not None else "Не указан"
+    quantity = f"{raw_quantity} шт." if raw_quantity is not None else "Не указано"
+    price = f"{raw_price} р." if raw_price is not None else "Не указана"
+
+    genre_dict = {
+        "fantasy": "🚀 Фэнтази",
+        "horror": "👻 Ужасы",
+        "sciencefiction": "🌌 Научная фантастика",
+        "detective": "🕵️ Детектив",
+        "classic": "🎭 Классика",
+        "poetry": "✒️ Поэзия",
+    }
+    genre = genre_dict.get(raw_genre, "Не указан") if raw_genre else "Не указан"
+    if all(
+        [
+            raw_title,
+            raw_author,
+            raw_year is not None,
+            raw_quantity is not None,
+            raw_price is not None,
+            raw_genre,
+        ]
+    ):
+        status = "✅ Все данные заполнены, книга готова к публикации!"
+    else:
+        status = "❌ Заполните все данные книги для её публикации!"
+    return f"""
+<b>{status}</b>
+
+📖 Название: <b>{title}</b>
+📚 Жанр: <b>{genre}</b>
+
+✍ Автор: <i>{author}</i> 
+🗓 Год издания: {year}
+📦 Остаток в магазине: {quantity}
+💰 Цена: {price}
+"""
+
+
 async def order_data_structure(list_of_books, total_price, order_data, user_balance):
     defaults = (None,) * 8
     name, phone, city, street, house, apartment, payment, comment = (
@@ -162,11 +210,15 @@ async def get_full_review(review_data, for_new=False):
 
 
 async def book_for_review(book_info):
+    title = book_info.get("book_title", "Неизвестно")
+    author = book_info.get("author_name", "Неизвестен")
+    avg_rating = book_info.get("avg_rating", 0) or 0
+    reviews_count = book_info.get("reviews_count", 0) or 0
     message_text = (
-        f"📖 <b>{book_info['book_title']}</b>\n"
-        f"👤 Автор: {book_info['author_name'] or 'Неизвестен'}\n"
-        f"⭐ Оценка: {book_info['avg_rating'] or 0:.1f}\n"
-        f"💬 Количество отзывов: {book_info['reviews_count'] or 0}\n\n"
+        f"📖 <b>{title}</b>\n"
+        f"👤 Автор: {author}\n"
+        f"⭐ Средняя оценка: {avg_rating:.1f}\n"
+        f"💬 Всего отзывов: {reviews_count}\n\n"
     )
     return message_text
 

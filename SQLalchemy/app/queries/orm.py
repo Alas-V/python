@@ -192,16 +192,26 @@ class BookQueries:
                     func.count(Review.review_id).label("reviews_count"),
                 )
                 .select_from(Book)
-                .join(Review, Review.book_id == Book.book_id)
                 .join(Author, Book.author_id == Author.author_id, isouter=True)
-                .where(and_(Book.book_id == book_id_int, Review.published))
+                .join(
+                    Review,
+                    and_(Review.book_id == Book.book_id, Review.published),
+                    isouter=True,
+                )
+                .where(Book.book_id == book_id_int)
                 .group_by(
                     Book.book_id,
                     Author.author_id,
                 )
             )
             result = await session.execute(query)
-            return result.mappings().first()
+            book_data = result.mappings().first()
+            if book_data and book_data["book_rating"] is None:
+                book_data = dict(book_data)
+                book_data["book_rating"] = 0.0
+                book_data["reviews_count"] = 0
+
+            return book_data
 
     @staticmethod
     async def get_book_reviews(book_id):
@@ -215,13 +225,22 @@ class BookQueries:
                     func.avg(Review.review_rating).label("avg_rating"),
                     func.count(Review.review_id).label("reviews_count"),
                 )
+                .select_from(Book)
                 .join(Author, Book.author_id == Author.author_id, isouter=True)
-                .join(Review, Review.book_id == Book.book_id, isouter=True)
-                .where(and_(Book.book_id == book_id_int, Review.published))
+                .join(
+                    Review,
+                    and_(Review.book_id == Book.book_id, Review.published),
+                    isouter=True,
+                )  # OUTER JOIN
+                .where(Book.book_id == book_id_int)
                 .group_by(Book.book_id, Book.book_title, Author.author_name)
             )
             book_result = await session.execute(book_query)
             book_info = book_result.mappings().first()
+            if book_info and book_info["avg_rating"] is None:
+                book_info = dict(book_info)
+                book_info["avg_rating"] = 0.0
+                book_info["reviews_count"] = 0
             reviews_query = (
                 select(
                     Review.review_id,
@@ -302,8 +321,24 @@ class BookQueries:
                         f"🛒 У вас уже в корзине: {current_in_cart} шт.\n"
                     ),
                 }
-
             return {"available": True, "book_title": book_title}
+
+    @staticmethod
+    async def check_book_done(book_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Book).where(Book.book_id == book_id))
+            book = result.scalar_one_or_none()
+            if not book:
+                return False
+            required_fields = [
+                book.book_title,
+                book.book_year,
+                book.author_id,
+                book.book_price,
+                book.book_genre,
+                book.book_quantity,
+            ]
+            return all(required_fields)
 
     @staticmethod
     async def check_books_availability(book_data) -> tuple[bool, list]:
@@ -427,11 +462,33 @@ class BookQueries:
     @staticmethod
     async def made_book_with_admin_id_get_book_id(author_id: int) -> int:
         async with AsyncSessionLocal() as session:
-            book = Book(Book.author_id == author_id)
+            book = Book(author_id=author_id)
             session.add(book)
             await session.commit()
             await session.refresh(book)
             return book.book_id
+
+    @staticmethod
+    async def get_book_info_for_new(book_id):
+        async with AsyncSessionLocal() as session:
+            query = (
+                select(
+                    Book.book_id,
+                    Book.book_title,
+                    Book.book_year,
+                    Book.book_quantity,
+                    Book.book_price,
+                    Book.book_genre,
+                    Book.book_on_sale,
+                    Book.sale_value,
+                    Author.author_name,
+                    Author.author_country,
+                )
+                .join(Author, Book.author_id == Author.author_id, isouter=True)
+                .where(Book.book_id == book_id)
+            )
+            result = await session.execute(query)
+            return result.mappings().first()
 
 
 class SaleQueries:
@@ -1934,6 +1991,15 @@ class AdminQueries:
                 ).where(Author.author_name.ilike(f"%{author_name}%"))
             )
             return result.mappings().all()
+
+    @staticmethod
+    async def add_value_to_new_book(book_id: int, column: str, value) -> dict:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(Book).where(Book.book_id == book_id).values({column: value})
+            )
+            await session.flush()
+            await session.commit()
 
 
 class StatisticsQueries:

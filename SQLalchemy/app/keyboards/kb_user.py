@@ -353,19 +353,6 @@ class UserKeyboards:
     @staticmethod
     async def kb_reviews(book_id, reviews) -> InlineKeyboardMarkup:
         keyboard = []
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    text="📝Написать отзыв", callback_data=f"new_review_{book_id}"
-                )
-            ]
-        )
-        keyboard.append(
-            [
-                InlineKeyboardButton(text="🔙 Назад", callback_data=f"book_{book_id}"),
-                InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu"),
-            ],
-        )
         if reviews:
             rev_place = 0
             for review in reviews:
@@ -379,6 +366,19 @@ class UserKeyboards:
                     ],
                 )
                 rev_place += 1
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="📝 Написать отзыв", callback_data=f"new_review_{book_id}"
+                )
+            ]
+        )
+        keyboard.append(
+            [
+                InlineKeyboardButton(text="🔙 Назад", callback_data=f"book_{book_id}"),
+                InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu"),
+            ],
+        )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod

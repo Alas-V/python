@@ -120,10 +120,21 @@ class Author(Base):
 class Book(Base):
     __tablename__ = "books"
     book_id: Mapped[intpk]
-    book_title: Mapped[str] = mapped_column(String(50), index=True)
-    book_year: Mapped[int] = mapped_column(Integer, index=True)
+    book_title: Mapped[str] = mapped_column(
+        String(50),
+        index=True,
+        nullable=True,
+    )
+    book_year: Mapped[int] = mapped_column(
+        Integer,
+        index=True,
+        nullable=True,
+    )
     author_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("authors.author_id"), index=True
+        Integer,
+        ForeignKey("authors.author_id"),
+        index=True,
+        nullable=True,
     )
     book_status: Mapped[BookStatus] = mapped_column(
         String(20),
@@ -137,14 +148,24 @@ class Book(Base):
         Float,
         CheckConstraint("sale_value >= 0 AND sale_value <= 1"),
         server_default="0",
-    )
+    )  # 0.1 = 10%, 1 = 100%
     book_in_stock: Mapped[bool] = mapped_column(Boolean, server_default=text("FALSE"))
     book_photo_id: Mapped[str] = mapped_column(String, nullable=True)
-    # 0.1 = 10%, 1 = 100%
-    book_price: Mapped[int] = mapped_column(Integer, CheckConstraint("book_price >= 0"))
+    book_price: Mapped[int] = mapped_column(
+        Integer,
+        CheckConstraint("book_price >= 0"),
+        nullable=True,
+    )
     book_add_date: Mapped[created_at]
-    book_genre: Mapped[BookGenre] = mapped_column(String(45))
-    book_quantity: Mapped[int] = mapped_column(Integer, index=True)
+    book_genre: Mapped[BookGenre] = mapped_column(
+        String(45),
+        nullable=True,
+    )
+    book_quantity: Mapped[int] = mapped_column(
+        Integer,
+        index=True,
+        nullable=True,
+    )
     author: Mapped["Author"] = relationship(back_populates="author_books")
     reviews: Mapped[List["Review"]] = relationship(
         back_populates="reviewed_book", cascade="all, delete-orphan"
