@@ -977,6 +977,127 @@ class KbAdmin:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
+    async def kb_after_published_book(book_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📖 Открыть опубликованную книгу",
+                        callback_data=f"book_{book_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="➕ Добавить еще одну новую книгу",
+                        callback_data="admin_add_book",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Главное меню администратора",
+                        callback_data="admin_menu",
+                    )
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def want_to_delete_new_book(book_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🗑️ Выйти и удалить книгу",
+                        callback_data=f"delete_new_book_{book_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="✏️ Продолжить редактирование книги",
+                        callback_data=f"admin_continue_adding_new_book_{book_id}",
+                    )
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def kb_new_book_changing(
+        book_id: int,
+        book_done: bool = False,
+        new_book: bool = False,
+    ) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="👤 Автор", callback_data=f"admin_book_change_name_{book_id}"
+                ),
+                InlineKeyboardButton(
+                    text="📖  Название",
+                    callback_data=f"admin_book_change_title_{book_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📚 Жанр", callback_data=f"admin_book_change_genre_{book_id}"
+                ),
+                InlineKeyboardButton(
+                    text="🗓 Год выпуска",
+                    callback_data=f"admin_book_change_year_{book_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💰 Цена", callback_data=f"admin_book_change_price_{book_id}"
+                ),
+                InlineKeyboardButton(
+                    text="📦 Количество экземпляров",
+                    callback_data=f"admin_book_change_quantity_{book_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🖼 Обложка", callback_data=f"admin_book_change_cover_{book_id}"
+                )
+            ],
+        ]
+        if new_book:
+            if book_done:
+                keyboard.append(
+                    [
+                        InlineKeyboardButton(
+                            text="✅ Закончить редактирование и опубликовать",
+                            callback_data=f"admin_book_publishing_{book_id}",
+                        ),
+                    ]
+                )
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад",
+                        callback_data=f"admin_book_change_back_{book_id}",
+                    ),
+                ]
+            )
+        else:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="% Назначить скидку",
+                        callback_data=f"admin_book_set_sale_{book_id}",
+                    ),
+                ],
+            )
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data=f"book_{book_id}"
+                    ),
+                ]
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
     async def universal_appeals_keyboard(
         appeals_data: list,
         page: int = 0,

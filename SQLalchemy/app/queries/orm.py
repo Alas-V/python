@@ -324,6 +324,15 @@ class BookQueries:
             return {"available": True, "book_title": book_title}
 
     @staticmethod
+    async def more_than_zero_books(book_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Book.book_quantity).where(Book.book_id == book_id)
+            )
+            quantity = result.scalar_one_or_none()
+            return quantity is not None and quantity > 0
+
+    @staticmethod
     async def check_book_done(book_id: int) -> bool:
         async with AsyncSessionLocal() as session:
             result = await session.execute(select(Book).where(Book.book_id == book_id))
@@ -1350,6 +1359,23 @@ class AdminQueries:
             )
             await session.commit()
             return True
+
+    @staticmethod
+    async def delete_book(book_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            try:
+                result = await session.execute(
+                    select(Book).where(Book.book_id == book_id)
+                )
+                book = result.scalar_one_or_none()
+                if book:
+                    await session.delete(book)
+                    await session.commit()
+                    return True
+                return False
+            except Exception as e:
+                await session.rollback()
+                return False
 
     @staticmethod
     async def made_new_admin_get_id(telegram_id: int) -> int:

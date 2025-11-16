@@ -67,3 +67,5 @@ class AdminAddNewBook(StatesGroup):
     waiting_for_book_price = State()
     waiting_for_book_quantity = State()
     waiting_for_book_cover = State()
+    editing_field = State()
+    editing_cover = State()
