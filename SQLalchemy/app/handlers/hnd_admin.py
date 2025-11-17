@@ -1981,6 +1981,78 @@ async def admin_add_genre_to_new_book_(
         return
 
 
+@admin_router.callback_query(F.data.startswith("admin_change_genre_to_new_book_"))
+@admin_required
+async def admin_change_genre_to_new_book(
+    callback: CallbackQuery,
+    bot: Bot,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    book_id = int(callback.data.split("_")[-1])
+    book_genre = callback.data.split("_")[-2]
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    chat_id = data.get("chat_id")
+    last_hint_id = data.get("last_hint_id")
+    if last_hint_id:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=last_hint_id)
+        except Exception as e:
+            print(f"Не удалось удалить подсказку: {e}")
+    try:
+        await AdminQueries.add_value_to_new_book(
+            book_id=book_id, column="book_genre", value=book_genre
+        )
+        book_data = await BookQueries.get_book_info_for_new(book_id)
+        book_text = await get_book_text_for_adding(book_data)
+        book_done = await BookQueries.check_book_done(book_id)
+        has_cover = await BookQueries.has_cover(book_id)
+        if has_cover:
+            try:
+                await bot.delete_message(
+                    chat_id=callback.message.chat.id, message_id=main_message_id
+                )
+            except Exception as e:
+                print(f"Не удалось удалить подсказку: {e}")
+            main_message = await bot.send_photo(
+                chat_id=chat_id,
+                photo=has_cover,
+                caption=book_text,
+                reply_markup=await KbAdmin.kb_new_book_changing(
+                    book_id, book_done, new_book=True
+                ),
+                parse_mode="HTML",
+            )
+            await state.clear()
+            await state.update_data(
+                main_message_id=main_message.message_id,
+                chat_id=chat_id,
+                book_id=book_id,
+            )
+            return
+        main_message = await bot.edit_message_text(
+            message_id=main_message_id,
+            chat_id=chat_id,
+            text=book_text,
+            reply_markup=await KbAdmin.kb_new_book_changing(
+                book_id, book_done, new_book=True
+            ),
+            parse_mode="HTML",
+        )
+        await state.clear()
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            chat_id=chat_id,
+            book_id=book_id,
+        )
+    except Exception as e:
+        print(f"Ошибка admin_change_genre_to_new_book_: {e}")
+        return
+
+
 # opening book after publishing it to stock
 # @admin_router.callback_query(F.data.startswith("admin_book_publishing_"))
 # @admin_required
@@ -2356,11 +2428,11 @@ async def admin_change_book_(
     return
 
 
-# TODO
 @admin_router.callback_query(F.data.startswith("admin_book_change_"))
 @admin_required
 async def admin_book_settings_(
     callback: CallbackQuery,
+    bot: Bot,
     state: FSMContext,
     is_admin: bool,
     admin_permissions: int,
@@ -2373,8 +2445,19 @@ async def admin_book_settings_(
         return
     book_id = int(callback.data.split("_")[-1])
     what_to_change = str(callback.data.split("_")[-2])
+    data = await state.get_data()
+    last_hint_id = data.get("last_hint_id")
+    main_message_id = data.get("main_message_id ")
+    if last_hint_id:
+        print(last_hint_id)
+        try:
+            await bot.delete_message(
+                chat_id=callback.message.chat.id, message_id=last_hint_id
+            )
+        except Exception as e:
+            print(f"Не удалось удалить подсказку: {e}")
     hint_dict = {
-        "name": "👤 Введите Автора Книги:\n\n<i>Если автор уже был добавлен ранее, то он откроется автоматически</i>",
+        "author": "👤 Введите Автора Книги:\n\n<i>Если автор уже был добавлен ранее, то он откроется автоматически</i>",
         "title": "📖 Укажите новое название книги:",
         "genre": "🔮 Выберите новый жанр книги: ",
         "year": "🗓 Укажите год издания книги ",
@@ -2385,7 +2468,7 @@ async def admin_book_settings_(
     if what_to_change == "genre":
         hint_message = await callback.message.answer(
             text=hint_dict.get(what_to_change),
-            reply_markup=await KbAdmin.choose_genre_for_new_book(book_id),
+            reply_markup=await KbAdmin.choose_genre_for_new_book_manually(book_id),
             parse_mode="HTML",
         )
     else:
@@ -2394,6 +2477,8 @@ async def admin_book_settings_(
         )
     if what_to_change == "cover":
         await state.set_state(AdminAddNewBook.editing_cover)
+    if what_to_change == "author":
+        await state.set_state(AdminAddNewBook.editing_author)
     else:
         await state.set_state(AdminAddNewBook.editing_field)
     await state.update_data(
@@ -2401,9 +2486,89 @@ async def admin_book_settings_(
         what_to_change=what_to_change,
         chat_id=callback.message.chat.id,
         book_id=book_id,
+        main_message_id=main_message_id,
     )
     await callback.answer()
     return
+
+
+@admin_router.callback_query(
+    F.data.startswith("admin_choose_author_for_choosing_book_")
+)
+@admin_required
+async def admin_choose_author_for_choosing_book(
+    callback: CallbackQuery,
+    bot: Bot,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    author_id = int(callback.data.split("_")[-1])
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    chat_id = data.get("chat_id")
+    last_hint_id = data.get("last_hint_id")
+    book_id = data.get("book_id")
+    if last_hint_id:
+        try:
+            await bot.delete_message(
+                chat_id=callback.message.chat.id, message_id=last_hint_id
+            )
+        except Exception as e:
+            print(f"Не удалось удалить подсказку: {e}")
+    try:
+        await AdminQueries.assign_new_author_to_book(book_id, author_id)
+        book_data = await BookQueries.get_book_info_for_new(book_id)
+        book_text = await get_book_text_for_adding(book_data)
+        book_done = await BookQueries.check_book_done(book_id)
+        has_cover = await BookQueries.has_cover(book_id)
+        if has_cover:
+            try:
+                await bot.delete_message(
+                    chat_id=callback.message.chat.id, message_id=main_message_id
+                )
+            except Exception as e:
+                print(f"Не удалось удалить подсказку: {e}")
+            main_message = await bot.send_photo(
+                chat_id=chat_id,
+                photo=has_cover,
+                caption=book_text,
+                reply_markup=await KbAdmin.kb_new_book_changing(
+                    book_id, book_done, new_book=True
+                ),
+                parse_mode="HTML",
+            )
+            await state.clear()
+            await state.update_data(
+                main_message_id=main_message.message_id,
+                chat_id=chat_id,
+                book_id=book_id,
+            )
+            return
+        main_message = await bot.edit_message_text(
+            message_id=main_message_id,
+            chat_id=callback.message.chat.id,
+            text=book_text,
+            reply_markup=await KbAdmin.kb_add_new_book(book_id, book_done),
+            parse_mode="HTML",
+        )
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            chat_id=callback.message.chat.id,
+            book_id=book_id,
+        )
+        await callback.answer()
+        return
+    except Exception as e:
+        print(f"Ошибка admin_choose_author_for_choosing_book_: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
+        return
 
 
 # FMScontext hnd
@@ -3589,3 +3754,120 @@ async def AdminAddNewBook_editing_field(
     except Exception as e:
         print(f"Ошибка AdminAddNewBook.editing_field, F.text. raw_string  : {e}")
         return
+
+
+@admin_router.message(AdminAddNewBook.editing_cover, F.photo)
+@admin_required
+async def AdminAddNewBook_editing_cover(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    data = await state.get_data()
+    main_message_id = data.get("main_message_id")
+    chat_id = data.get("chat_id")
+    book_id = data.get("book_id")
+    last_hint_id = data.get("last_hint_id")
+    if last_hint_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_hint_id)
+        except Exception as e:
+            print(f"Не удалось удалить подсказку: {e}")
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение с фото: {e}")
+    photo_photo_id = message.photo[-1].file_id
+    try:
+        await AdminQueries.add_value_to_new_book(
+            book_id=book_id,
+            value=photo_photo_id,
+            column="book_photo_id",
+        )
+        book_data = await BookQueries.get_book_info_for_new(book_id)
+        book_text = await get_book_text_for_adding(book_data)
+        book_done = await BookQueries.check_book_done(book_id)
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=main_message_id)
+        except Exception:
+            pass
+        main_message = await bot.send_photo(
+            chat_id=chat_id,
+            photo=photo_photo_id,
+            caption=book_text,
+            reply_markup=await KbAdmin.kb_new_book_changing(
+                book_id, book_done, new_book=True
+            ),
+            parse_mode="HTML",
+        )
+        await state.clear()
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            chat_id=chat_id,
+            book_id=book_id,
+        )
+    except Exception as e:
+        print(f"Ошибка AdminAddNewBook.editing_cover: {e}")
+        return
+
+
+@admin_router.message(AdminAddNewBook.editing_author, F.text)
+@admin_required
+async def AdminAddNewBook_editing_author(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    data = await state.get_data()
+    chat_id = data.get("chat_id")
+    book_id = data.get("book_id")
+    last_hint_id = data.get("last_hint_id")
+    main_message_id = data.get("main_message_id")
+    raw_author_name = message.text.strip()
+    author = await AdminQueries.check_if_author_exist(raw_author_name)
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Не удалось удалить сообщение с фото: {e}")
+    if author:
+        hint_message = await bot.edit_message_text(
+            message_id=last_hint_id,
+            chat_id=chat_id,
+            text=f"Выберите автора из предложенных по вашему запросу: {raw_author_name}.\n\n<i>Или создайте нового автора</i>",
+            reply_markup=await KbAdmin.choose_author_for_changing_book(
+                author, raw_author_name, book_id
+            ),
+            parse_mode="HTML",
+        )
+        await state.clear()
+        await state.update_data(
+            author_name=raw_author_name,
+            last_hint_id=hint_message.message_id,
+            chat_id=chat_id,
+            book_id=book_id,
+            main_message_id=main_message_id,
+        )
+        return
+    hint_message = await bot.edit_message_text(
+        message_id=last_hint_id,
+        chat_id=chat_id,
+        text=f"Не удалось найти автора по вашему запросу: {raw_author_name}.\n\n<i>Проверьте корректность ввода или создайте нового автора</i>",
+        reply_markup=await KbAdmin.author_not_found_made_new_for_changing_book(
+            raw_author_name
+        ),
+        parse_mode="HTML",
+    )
+    await state.set_state(AdminAddNewBook.editing_author)
+    await state.update_data(
+        author_name=raw_author_name,
+        last_hint_id=hint_message.message_id,
+        chat_id=chat_id,
+        book_id=book_id,
+        main_message_id=main_message_id,
+    )

@@ -69,3 +69,4 @@ class AdminAddNewBook(StatesGroup):
     waiting_for_book_cover = State()
     editing_field = State()
     editing_cover = State()
+    editing_author = State()

@@ -2027,6 +2027,16 @@ class AdminQueries:
             await session.flush()
             await session.commit()
 
+    @staticmethod
+    async def assign_new_author_to_book(book_id: int, author_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                update(Book).where(Book.book_id == book_id).values(author_id=author_id)
+            )
+            await session.execute(stmt)
+            await session.commit()
+            return True
+
 
 class StatisticsQueries:
     @staticmethod

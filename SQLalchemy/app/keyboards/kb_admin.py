@@ -691,6 +691,42 @@ class KbAdmin:
         return builder.as_markup()
 
     @staticmethod
+    async def choose_author_for_changing_book(
+        authors: dict,
+        raw_author_name: str,
+        book_id: int,
+    ) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+        for author in authors:
+            author_id = author.get("author_id")
+            author_name = author.get("author_name")
+            author_country = author.get("author_country")
+            button_text = f"{author_name} | 🌎{author_country} "
+            if len(button_text) > 40:
+                button_text = button_text[:37] + "..."
+            builder.button(
+                text=button_text,
+                callback_data=f"admin_choose_author_for_choosing_book_{author_id}",
+            )
+        new_author_text = f"➕ Добавить нового автора {raw_author_name}"
+        if len(new_author_text) > 40:
+            new_author_text = new_author_text[:37] + "..."
+        builder.adjust(1)
+        builder.row(
+            InlineKeyboardButton(
+                text=new_author_text,
+                callback_data="admin_made_new_author_for_choosing_book",
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=f"admin_change_book_{book_id}",
+            )
+        )
+        return builder.as_markup()
+
+    @staticmethod
     async def author_not_found_made_new(raw_author_name: str) -> InlineKeyboardMarkup:
         new_author_text = f"➕ Добавить нового автора {raw_author_name}"
         if len(new_author_text) > 40:
@@ -726,6 +762,25 @@ class KbAdmin:
             builder.button(
                 text=button_text,
                 callback_data=f"admin_add_genre_to_new_book_{genre_enum.value}_{book_id}",
+            )
+        builder.adjust(2)
+        return builder.as_markup()
+
+    @staticmethod
+    async def choose_genre_for_new_book_manually(book_id: int) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+        genre_dict = {
+            BookGenre.FANTASY: "🚀 Фэнтази",
+            BookGenre.HORROR: "👻 Ужасы",
+            BookGenre.SCIENCEFICTION: "🌌 Научная фантастика",
+            BookGenre.DETECTIVE: "🕵️ Детектив",
+            BookGenre.CLASSIC: "🎭 Классическая литература",
+            BookGenre.POETRY: "✒️ Поэзия",
+        }
+        for genre_enum, button_text in genre_dict.items():
+            builder.button(
+                text=button_text,
+                callback_data=f"admin_change_genre_to_new_book_{genre_enum.value}_{book_id}",
             )
         builder.adjust(2)
         return builder.as_markup()
@@ -1029,7 +1084,7 @@ class KbAdmin:
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="👤 Автор", callback_data=f"admin_book_change_name_{book_id}"
+                    text="👤 Автор", callback_data=f"admin_book_change_author_{book_id}"
                 ),
                 InlineKeyboardButton(
                     text="📖  Название",
