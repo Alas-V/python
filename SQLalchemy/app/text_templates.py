@@ -931,6 +931,20 @@ async def get_book_text_for_admin(books_data: dict) -> str:
     return text
 
 
+async def author_details_for_adding(author_info):
+    name = author_info.get("author_name", "Неизвестно")
+    country = author_info.get("author_country") or "не указано"
+    add_date = author_info.get("author_add_date") or "не указано"
+    if hasattr(add_date, "strftime"):
+        add_date = add_date.strftime("%d.%m.%Y")
+    message_text = (
+        f"👤 <b>Имя автора:</b> {name}\n"
+        f"🌍 <b>Страна:</b> {country}\n"
+        f"📅 <b>Дата добавления:</b> {add_date}\n"
+    )
+    return message_text
+
+
 INFOTEXT = """📚 BookStore Demo Bot
 Прототип книжного магазина с полным циклом заказа
 

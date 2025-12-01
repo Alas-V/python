@@ -110,7 +110,7 @@ class Author(Base):
     __tablename__ = "authors"
     author_id: Mapped[intpk]
     author_name: Mapped[str] = mapped_column(String(90), index=True)
-    author_country: Mapped[str] = mapped_column(String(80), index=True)
+    author_country: Mapped[str] = mapped_column(String(80), index=True, nullable=True)
     author_add_date: Mapped[created_at]
     author_books: Mapped[List["Book"]] = relationship(
         back_populates="author", cascade="all, delete-orphan"

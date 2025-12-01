@@ -695,6 +695,7 @@ class KbAdmin:
         authors: dict,
         raw_author_name: str,
         book_id: int,
+        old_author_id: int,
     ) -> InlineKeyboardMarkup:
         builder = InlineKeyboardBuilder()
         for author in authors:
@@ -715,7 +716,7 @@ class KbAdmin:
         builder.row(
             InlineKeyboardButton(
                 text=new_author_text,
-                callback_data="admin_made_new_author_for_choosing_book",
+                callback_data=f"admin_made_new_author_for_choosing_book_{raw_author_name}_{old_author_id}",
             )
         )
         builder.row(
@@ -725,6 +726,32 @@ class KbAdmin:
             )
         )
         return builder.as_markup()
+
+    @staticmethod
+    async def kb_made_new_author_for_existing_book(
+        new_author_name: str,
+        old_author_id: int,
+        book_id: int,
+    ) -> InlineKeyboardMarkup:
+        new_author_text = f"➕ Добавить нового автора {new_author_name}"
+        if len(new_author_text) > 40:
+            new_author_text = new_author_text[:37] + "..."
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=new_author_text,
+                        callback_data=f"admin_made_new_author_for_choosing_book_{new_author_name}_{old_author_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад",
+                        callback_data=f"admin_change_book_{book_id}",
+                    )
+                ],
+            ]
+        )
 
     @staticmethod
     async def author_not_found_made_new(raw_author_name: str) -> InlineKeyboardMarkup:
@@ -1084,10 +1111,10 @@ class KbAdmin:
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="👤 Автор", callback_data=f"admin_book_change_author_{book_id}"
+                    text="👤 Автор", callback_data=f"admin_change_author_{book_id}"
                 ),
                 InlineKeyboardButton(
-                    text="📖  Название",
+                    text="📖 Название",
                     callback_data=f"admin_book_change_title_{book_id}",
                 ),
             ],
@@ -1153,6 +1180,19 @@ class KbAdmin:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
+    async def kb_change_author(book_id: int) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад",
+                        callback_data=f"admin_change_book_{book_id}",
+                    )
+                ]
+            ]
+        )
+
+    @staticmethod
     async def universal_appeals_keyboard(
         appeals_data: list,
         page: int = 0,
@@ -1213,3 +1253,54 @@ class KbAdmin:
             builder.row(*pagination_buttons)
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=back_callback))
         return builder.as_markup()
+
+    # Important: not right one
+    @staticmethod
+    async def adding_new_author(
+        author_id: int, is_complete: bool
+    ) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="❌ Удалить автора и выйти",
+                    callback_data=f"delete_new_author_and_exit_{author_id}",
+                )
+            ]
+        ]
+        if is_complete:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="✅ Создать автора и продолжить",
+                        callback_data=f"admin_choose_author_for_new_book_{author_id}",
+                    )
+                ],
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def changing_author_for_book(
+        new_author_id: int,
+        old_author_id: int,
+        is_complete: bool,
+    ) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="❌ Удалить нового автора и вернуться",
+                    callback_data=f"delete_new_author_and_back_to_old_one_{old_author_id}_{new_author_id}",
+                )
+            ]
+        ]
+        if is_complete:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text="✅ Выбрать нового автора",
+                        callback_data=f"change_author_in_existing_book_{new_author_id}",
+                    )
+                ],
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)

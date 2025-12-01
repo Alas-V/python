@@ -113,6 +113,92 @@ class AuthorQueries:
                     )
         print(author_data)
 
+    @staticmethod
+    async def made_author_get_id(author_name: str) -> int:
+        async with AsyncSessionLocal() as session:
+            author = Author(
+                author_name=author_name,
+            )
+            session.add(author)
+            await session.flush()
+            author_id = author.author_id
+            await session.commit()
+            return author_id
+
+    @staticmethod
+    async def get_author_data(author_id: int) -> dict:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Author)
+                .options(selectinload(Author.author_books))
+                .where(Author.author_id == author_id)
+            )
+            author = result.scalar_one_or_none()
+            if author:
+                return {
+                    "author_name": author.author_name,
+                    "author_country": author.author_country,
+                    "author_add_date": author.author_add_date,
+                }
+            return {}
+
+    @staticmethod
+    async def add_data_to_column(author_id: int, value: str, column: str):
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(Author)
+                .where(Author.author_id == author_id)
+                .values({column: value})
+            )
+            await session.flush()
+            await session.commit()
+
+    @staticmethod
+    async def check_author_completion(author_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    Author.author_name,
+                    Author.author_country,
+                ).where(Author.author_id == author_id)
+            )
+            data = result.first()
+            if not data:
+                return False
+            name, country = data
+            is_complete = all([name, country])
+            return is_complete
+
+    @staticmethod
+    async def delete_author(author_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            author = await session.scalar(
+                select(Author).where(Author.author_id == author_id)
+            )
+            await session.delete(author)
+            await session.commit()
+            return True
+
+    @staticmethod
+    async def get_book_author_id(book_id: int):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Book.author_id).where(Book.book_id == book_id)
+            )
+            author_id = result.scalar_one_or_none()
+            return author_id
+
+    @staticmethod
+    async def assigned_new_author_to_book(new_author_id: int, book_id: int):
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(Book)
+                .where(Book.book_id == book_id)
+                .values({"author_id": new_author_id})
+            )
+            await session.flush()
+            await session.commit()
+
 
 class BookQueries:
     @staticmethod

@@ -70,3 +70,13 @@ class AdminAddNewBook(StatesGroup):
     editing_field = State()
     editing_cover = State()
     editing_author = State()
+
+
+class AdminAddingNewAuthor(StatesGroup):
+    waiting_for_author_country = State()
+
+
+class AdminChangeAuthorInExistingBook(StatesGroup):
+    waiting_for_author_name = State()
+    waiting_for_author_country = State()
+    waiting_completion = State()
