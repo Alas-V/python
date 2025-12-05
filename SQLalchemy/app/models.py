@@ -121,7 +121,6 @@ class Book(Base):
     __tablename__ = "books"
     book_id: Mapped[intpk]
     book_title: Mapped[str] = mapped_column(
-        String(50),
         index=True,
         nullable=True,
     )

@@ -28,6 +28,9 @@ from sqlalchemy.orm import selectinload, joinedload
 from typing import Dict, Any
 import math
 from typing import Optional
+from authors import REAL_AUTHORS
+from books import REAL_BOOKS
+
 
 fake = Faker("ru_RU")
 
@@ -251,6 +254,7 @@ class BookQueries:
                     func.avg(Review.review_rating).label("book_rating"),
                 )
                 .select_from(Book)
+                .outerjoin(Review)
                 .where(and_(Book.book_genre == genre, Book.book_in_stock))
                 .group_by(Book.book_id, Book.book_title)
                 .order_by(Book.sale_value.desc(), Book.book_title)
@@ -2464,32 +2468,58 @@ class DBData:
                 role_name="super_admin",
             )
 
-            # Создаем авторов
-            authors = [
-                Author(author_name=fake.name(), author_country=fake.country())
-                for _ in range(25)
-            ]
-            session.add(admin)
-            session.add_all(authors)
-            await session.flush()
+            # # Создаем авторов
+            # authors = [
+            #     Author(author_name=fake.name(), author_country=fake.country())
+            #     for _ in range(25)
+            # ]
+            # session.add(admin)
+            # session.add_all(authors)
+            # await session.flush()
 
-            # Создаем книги
-            books = [
-                Book(
-                    book_title=fake.sentence(nb_words=3)[:-1],
-                    book_year=random.randint(1990, 2023),
-                    author_id=random.choice(authors).author_id,
-                    book_status=random.choice(list(BookStatus)),
-                    book_price=random.randint(400, 3000),
-                    book_photo_id="AgACAgIAAxkBAAISfGkV5uHsE7KI41KLjrCTaTHCeedPAALhDWsb25uwSCWYDAlTnDwWAQADAgADeQADNgQ",
-                    book_in_stock=True,
-                    book_genre=random.choice(list(BookGenre)),
-                    book_quantity=random.randint(1, 9),
+            # # Создаем книги
+            # books = [
+            #     Book(
+            #         book_title=fake.sentence(nb_words=3)[:-1],
+            #         book_year=random.randint(1990, 2023),
+            #         author_id=random.choice(authors).author_id,
+            #         book_status=random.choice(list(BookStatus)),
+            #         book_price=random.randint(400, 3000),
+            #         book_photo_id="AgACAgIAAxkBAAISfGkV5uHsE7KI41KLjrCTaTHCeedPAALhDWsb25uwSCWYDAlTnDwWAQADAgADeQADNgQ",
+            #         book_in_stock=True,
+            #         book_genre=random.choice(list(BookGenre)),
+            #         book_quantity=random.randint(1, 9),
+            #     )
+            #     for _ in range(50)
+            # ]
+            # session.add_all(books)
+            # await session.flush()
+
+            for author_data in REAL_AUTHORS:
+                author = Author(
+                    author_name=author_data["author_name"],
+                    author_country=author_data["author_country"],
+                    author_add_date=author_data.get("author_add_date", datetime.now()),
                 )
-                for _ in range(50)
-            ]
-            session.add_all(books)
-            await session.flush()
+                session.add(author)
+                await session.flush()
+            await session.commit()
+
+            for book_data in REAL_BOOKS:
+                book = Book(
+                    book_title=book_data["book_title"],
+                    book_year=book_data["book_year"],
+                    author_id=book_data["author_id"],
+                    book_status=book_data["book_status"],
+                    book_price=book_data["book_price"],
+                    book_photo_id=book_data["book_photo_id"],
+                    book_in_stock=book_data["book_in_stock"],
+                    book_genre=book_data["book_genre"],
+                    book_quantity=book_data["book_quantity"],
+                )
+                session.add(book)
+                await session.flush()
+            await session.commit()
 
             # Создаем дополнительных пользователей
             users = []
@@ -2506,49 +2536,49 @@ class DBData:
 
             await session.flush()
 
-            # Создаем отзывы
-            book_ids = [book.book_id for book in books]
-            user_ids = [user.telegram_id for user in users]
+            # # Создаем отзывы
+            # book_ids = [book.book_id for book in books]
+            # user_ids = [user.telegram_id for user in users]
 
-            reviews = [
-                Review(
-                    book_id=random.choice(book_ids),
-                    telegram_id=random.choice(user_ids),
-                    review_rating=random.randint(1, 3),
-                    review_title=fake.sentence(nb_words=3)[:100],
-                    review_body=fake.paragraph(nb_sentences=3)[:900],
-                    created_at=datetime.now() - timedelta(days=random.randint(0, 365)),
-                    finished=True,
-                    published=True,
-                )
-                for _ in range(70)
-            ]
-            session.add_all(reviews)
+            # reviews = [
+            #     Review(
+            #         book_id=random.choice(book_ids),
+            #         telegram_id=random.choice(user_ids),
+            #         review_rating=random.randint(1, 3),
+            #         review_title=fake.sentence(nb_words=3)[:100],
+            #         review_body=fake.paragraph(nb_sentences=3)[:900],
+            #         created_at=datetime.now() - timedelta(days=random.randint(0, 365)),
+            #         finished=True,
+            #         published=True,
+            #     )
+            #     for _ in range(70)
+            # ]
+            # session.add_all(reviews)
 
-            reviews2 = [
-                Review(
-                    book_id=random.choice(book_ids),
-                    telegram_id=random.choice(user_ids),
-                    review_rating=random.randint(3, 5),
-                    review_title=fake.sentence(nb_words=3)[:100],
-                    review_body=fake.paragraph(nb_sentences=3)[:900],
-                    created_at=datetime.now() - timedelta(days=random.randint(0, 365)),
-                    finished=True,
-                    published=True,
-                )
-                for _ in range(250)
-            ]
-            session.add_all(reviews2)
+            # reviews2 = [
+            #     Review(
+            #         book_id=random.choice(book_ids),
+            #         telegram_id=random.choice(user_ids),
+            #         review_rating=random.randint(3, 5),
+            #         review_title=fake.sentence(nb_words=3)[:100],
+            #         review_body=fake.paragraph(nb_sentences=3)[:900],
+            #         created_at=datetime.now() - timedelta(days=random.randint(0, 365)),
+            #         finished=True,
+            #         published=True,
+            #     )
+            #     for _ in range(250)
+            # ]
+            # session.add_all(reviews2)
 
             # Создаем элемент корзины
-            cart_item = CartItem(
-                cart_id=1,
-                cart_items_id=1,
-                book_id=15,
-                quantity=1,
-                price=1000,
-            )
-            session.add(cart_item)
+            # cart_item = CartItem(
+            #     cart_id=1,
+            #     cart_items_id=1,
+            #     book_id=15,
+            #     quantity=1,
+            #     price=1000,
+            # )
+            # session.add(cart_item)
             address = UserAddress(
                 address_id=1,
                 telegram_id=717149416,

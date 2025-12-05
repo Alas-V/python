@@ -4,7 +4,13 @@ from utils.admin_utils import PermissionChecker
 
 
 async def get_book_details(book_data: dict):
-    rating = float(book_data.get("book_rating"))
+    rating = book_data.get("book_rating")
+    if rating is None:
+        rating_text = "Нет оценок"
+        reviews_count = 0
+    else:
+        rating_text = f"{round(float(rating), 2)}⭐"
+        reviews_count = book_data.get("reviews_count", 0)
     price = float(book_data.get("book_price"))
 
     return f"""
@@ -15,15 +21,21 @@ async def get_book_details(book_data: dict):
 🗓 Год издания: {book_data.get("book_year")}
 📦 Остаток в магазине: {book_data.get("book_quantity")} шт.
 
-    {round(rating, 2)}⭐ 
-    {book_data.get("reviews_count", 0)} отзывов
+    {rating_text}⭐ 
+    {reviews_count} отзывов
 
 💳 <b>Цена:</b> {int(price)}₽ 
 """
 
 
 async def get_book_details_on_sale(book_data: dict):
-    rating = float(book_data.get("book_rating", 0))
+    rating = book_data.get("book_rating")
+    if rating is None:
+        rating_text = "Нет оценок"
+        reviews_count = 0
+    else:
+        rating_text = f"{round(float(rating), 2)}⭐"
+        reviews_count = book_data.get("reviews_count", 0)
     price = float(book_data.get("book_price", 0))
     sale_value = float(book_data.get("sale_value", 0))
     new_price = round(price * (1 - sale_value), 2)
@@ -36,8 +48,8 @@ async def get_book_details_on_sale(book_data: dict):
 🗓 Год издания: {book_data.get("book_year")}
 📦 Остаток в магазине: {book_data.get("book_quantity")} шт.
 
-    {round(rating, 2)}⭐ 
-    {book_data.get("reviews_count", 0)} отзывов
+    {rating_text}⭐ 
+    {reviews_count} отзывов
 
 💳 <b>Цена:</b> <s>{price}₽</s> <b>{new_price}₽</b> (скидка {discount_percent}%)
 """
