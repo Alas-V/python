@@ -350,4 +350,7 @@ class SupportAppeal(Base):
     priority: Mapped[str] = mapped_column(
         String(10), server_default=PriorityStatus.NORMAL
     )
+    admin_initiative: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("FALSE")
+    )
     admin_visit: Mapped[bool] = mapped_column(Boolean, server_default=text("FALSE"))

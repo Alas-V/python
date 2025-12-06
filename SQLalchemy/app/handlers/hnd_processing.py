@@ -463,11 +463,37 @@ async def process_phone(message: Message, state: FSMContext):
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    phone_number = message.text.strip()
+    error_message = None
+    try:
+        phone_digits = "".join(filter(str.isdigit, phone_number))
+        if not phone_digits:
+            error_message = "❌ Номер телефона должен содержать цифры"
+        else:
+            if len(phone_digits) < 10 or len(phone_digits) > 15:
+                error_message = f"❌ Неверная длина номера. Получено {len(phone_digits)} цифр, должно быть 10-15"
+            if phone_digits.startswith("8"):
+                phone_digits = "7" + phone_digits[1:]
+                phone_number = "+" + phone_digits
+            elif phone_digits.startswith("7") and not phone_number.startswith("+"):
+                phone_number = "+" + phone_digits
+    except Exception as e:
+        error_message = f"❌ Ошибка обработки номера: {str(e)}"
+    if error_message:
+        error_msg = await message.answer(error_message)
+        new_hint = await message.answer(
+            "📞 *Введите номер телефона:*", parse_mode="Markdown"
+        )
+        await state.set_state(OrderForm.phone)
+        await asyncio.sleep(2)
+        await error_msg.delete()
+        await state.update_data(last_hint_id=new_hint.message_id, user_messages=[])
+        return
     is_complete = await OrderQueries.update_info(
         telegram_id=message.from_user.id,
         address_id=address_id,
         column="phone",
-        data=message.text,
+        data=phone_number,
     )
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id

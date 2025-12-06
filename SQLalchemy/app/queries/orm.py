@@ -589,6 +589,28 @@ class BookQueries:
             result = await session.execute(query)
             return result.mappings().first()
 
+    @staticmethod
+    async def get_book_price(book_id: int) -> Optional[int]:
+        async with AsyncSessionLocal() as session:
+            query = select(Book.book_price).where(Book.book_id == book_id)
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+
+    @staticmethod
+    async def update_book_sale(book_id: int, sale_percent: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            sale_value = sale_percent / 100
+            stmt = (
+                update(Book)
+                .where(Book.book_id == book_id)
+                .values(
+                    book_on_sale=True, sale_value=sale_value, updated_at=datetime.now()
+                )
+            )
+            await session.execute(stmt)
+            await session.commit()
+            return True
+
 
 class SaleQueries:
     @staticmethod
@@ -630,6 +652,7 @@ class SaleQueries:
                 .where(
                     and_(Book.book_genre == genre, Book.book_on_sale, Review.published)
                 )
+                .outerjoin(Review)
                 .group_by(Book.book_id)
                 .order_by(Book.sale_value.desc())
             )
@@ -934,9 +957,9 @@ class SupportQueries:
             last_appeal = result.scalar_one_or_none()
             if not last_appeal:
                 return True
-            return True  # DEBUG  no cooldown at all
-            # time_passed = datetime.utcnow() - last_appeal
-            # return time_passed.total_seconds() >= 3600
+            # return True  # DEBUG  no cooldown at all
+            time_passed = datetime.utcnow() - last_appeal
+            return time_passed.total_seconds() >= 3600
 
     @staticmethod
     async def get_cooldown_minutes(telegram_id: int) -> int:
@@ -968,9 +991,9 @@ class SupportQueries:
             last_message = result.scalar_one_or_none()
             if not last_message:
                 return True
-            return True  # DEBUG для дебага , убирает cooldown для пользовательских сообщений
-            # time_passed = datetime.utcnow() - last_message
-            # return time_passed.total_seconds() >= 120
+            # return True  # DEBUG для дебага , убирает cooldown для пользовательских сообщений
+            time_passed = datetime.utcnow() - last_message
+            return time_passed.total_seconds() >= 120
 
     @staticmethod
     async def get_message_cooldown_seconds(telegram_id: int) -> str:
@@ -1067,6 +1090,23 @@ class SupportQueries:
             )
             count = result.scalar()
             return count > 0
+
+    @staticmethod
+    async def create_admin_initiated_appeal(telegram_id: int, admin_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            appeal = SupportAppeal(
+                telegram_id=telegram_id,
+                assigned_admin_id=admin_id,
+                status=AppealStatus.IN_WORK,
+                priority=PriorityStatus.NORMAL,
+                admin_initiative=True,
+                admin_visit=True,
+            )
+            session.add(appeal)
+            await session.flush()
+            appeal_id = appeal.appeal_id
+            await session.commit()
+            return appeal_id
 
 
 class OrderQueries:
@@ -1439,6 +1479,60 @@ class OrderQueries:
                 )
             await session.commit()
 
+    @staticmethod
+    async def get_user_telegram_id_by_order_id(order_id: int) -> Optional[int]:
+        async with AsyncSessionLocal() as session:
+            query = select(OrderData.telegram_id).where(OrderData.order_id == order_id)
+            result = await session.execute(query)
+            telegram_id = result.scalar_one_or_none()
+            return telegram_id
+
+    @staticmethod
+    async def get_order_with_user(order_id: int):
+        async with AsyncSessionLocal() as session:
+            query = (
+                select(OrderData)
+                .where(OrderData.order_id == order_id)
+                .options(selectinload(OrderData.user))
+            )
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_order_with_user_data(order_id: int):
+        async with AsyncSessionLocal() as session:
+            query = (
+                select(OrderData)
+                .where(OrderData.order_id == order_id)
+                .options(selectinload(OrderData.user))
+            )
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+
+    @staticmethod
+    async def check_cart_quantity_limit(
+        telegram_id: int, book_id: int, quantity_to_add: int = 1
+    ) -> dict:
+        async with AsyncSessionLocal() as session:
+            cart_query = (
+                select(func.sum(CartItem.quantity))
+                .join(Cart, Cart.cart_id == CartItem.cart_id)
+                .where(Cart.telegram_id == telegram_id, CartItem.book_id == book_id)
+            )
+            current_in_cart = await session.scalar(cart_query)
+            current_in_cart = current_in_cart or 0
+            book_query = select(Book.book_quantity).where(Book.book_id == book_id)
+            available_quantity = await session.scalar(book_query)
+            available_quantity = available_quantity or 0
+            total_after_add = current_in_cart + quantity_to_add
+            return {
+                "can_add": total_after_add <= available_quantity,
+                "current_in_cart": current_in_cart,
+                "available_quantity": available_quantity,
+                "max_can_add": max(0, available_quantity - current_in_cart),
+                "message": f"Доступно для добавления: {max(0, available_quantity - current_in_cart)} шт.",
+            }
+
 
 class AdminQueries:
     @staticmethod
@@ -1741,6 +1835,15 @@ class AdminQueries:
                 admin_message=message, admin_id=admin_id, appeal_id=appeal_id
             )
             session.add(admin_msg)
+            await session.execute(
+                update(SupportAppeal)
+                .where(SupportAppeal.appeal_id == appeal_id)
+                .values(
+                    status=AppealStatus.IN_WORK,
+                    admin_visit=True,
+                    updated_at=datetime.now(),
+                )
+            )
             await session.commit()
             return True
 
@@ -1892,14 +1995,11 @@ class AdminQueries:
                 select(Admin).where(Admin.admin_id == admin_id)
             )
             admin = admin.scalar_one_or_none()
-
             if not admin:
                 return False
-
             admin.permissions = permissions
             admin.role_name = role
             admin.updated_at = datetime.utcnow()
-
             await session.commit()
             return True
 
@@ -2126,6 +2226,24 @@ class AdminQueries:
             await session.execute(stmt)
             await session.commit()
             return True
+
+    @staticmethod
+    async def get_next_step_in_book_changes(book_id: int):
+        async with AsyncSessionLocal() as session:
+            query = select(
+                case(
+                    (Book.book_title.is_(None), "title"),
+                    (Book.book_year.is_(None), "year"),
+                    (Book.author_id.is_(None), "author"),
+                    (Book.book_genre.is_(None), "genre"),
+                    (Book.book_price.is_(None), "price"),
+                    (Book.book_quantity.is_(None), "quantity"),
+                    (Book.book_photo_id.is_(None), "cover"),
+                    else_="complete",
+                ).label("last_step")
+            ).where(Book.book_id == book_id)
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
 
 
 class StatisticsQueries:
@@ -2467,6 +2585,9 @@ class DBData:
                 permissions=AdminPermission.SUPER_ADMIN_PERMS,
                 role_name="super_admin",
             )
+            session.add(admin)
+            await session.flush()
+            await session.commit()
 
             # # Создаем авторов
             # authors = [

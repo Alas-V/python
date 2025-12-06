@@ -3,6 +3,7 @@ from utils.admin_utils import PermissionChecker
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from models import AdminPermission, AppealStatus, OrderStatus, BookGenre
 from datetime import datetime
+from typing import Optional
 
 status_dict = {
     AppealStatus.IN_WORK: "🔧 В работе",
@@ -32,7 +33,7 @@ class KbAdmin:
             keyboard.append(
                 [
                     InlineKeyboardButton(
-                        text="🛒 Статистика заказов", callback_data="admin_main_orders"
+                        text="🛒 Заказы", callback_data="admin_main_orders"
                     )
                 ]
             )
@@ -303,6 +304,43 @@ class KbAdmin:
                     callback_data="admin_main_orders",
                 )
             ],
+        )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def admin_appeal_actions_keyboard(
+        appeal_id: int,
+        status: str,
+        order_id: Optional[int] = None,
+        no_msg: bool = False,
+    ) -> InlineKeyboardMarkup:
+        keyboard = []
+        if status == "in_work" or status == "new":
+            if not no_msg:
+                keyboard.insert(
+                    0,
+                    [
+                        InlineKeyboardButton(
+                            text="✏️ Ответить пользователю",
+                            callback_data=f"admin_support_reply_{appeal_id}",
+                        )
+                    ],
+                )
+            if order_id:
+                keyboard.append(
+                    [
+                        InlineKeyboardButton(
+                            text="📦 Перейти к заказу",
+                            callback_data=f"admin_view_order_{order_id}",
+                        )
+                    ]
+                )
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="🔙 Меню администратора", callback_data="admin_main_orders"
+                )
+            ]
         )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -1254,7 +1292,6 @@ class KbAdmin:
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=back_callback))
         return builder.as_markup()
 
-    # Important: not right one
     @staticmethod
     async def adding_new_author(
         author_id: int, is_complete: bool
@@ -1303,4 +1340,29 @@ class KbAdmin:
                     )
                 ],
             )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def in_sale(book_id: int) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="❌ Отмена", callback_data=f"cancel_sale_{book_id}"
+                )
+            ]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def confirm_sale_keyboard(book_id: int) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="✅ Подтвердить", callback_data=f"confirm_sale_{book_id}"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Отмена", callback_data=f"cancel_sale_{book_id}"
+                ),
+            ]
+        ]
         return InlineKeyboardMarkup(inline_keyboard=keyboard)

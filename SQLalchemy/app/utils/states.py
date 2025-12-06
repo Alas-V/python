@@ -29,6 +29,10 @@ class SupportState(StatesGroup):
     message_to_support = State()
 
 
+class AdminInitiatedAppeal(StatesGroup):
+    waiting_for_first_message = State()
+
+
 class AdminSupportState(StatesGroup):
     message_from_support = State()
     sending_appeal_id_for_find = State()
@@ -80,3 +84,8 @@ class AdminChangeAuthorInExistingBook(StatesGroup):
     waiting_for_author_name = State()
     waiting_for_author_country = State()
     waiting_completion = State()
+
+
+class AdminSetSale(StatesGroup):
+    waiting_for_sale_amount = State()
+    confirm_sale = State()

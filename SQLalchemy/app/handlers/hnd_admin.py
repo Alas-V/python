@@ -32,6 +32,7 @@ from text_templates import (
     get_book_details_on_sale,
     get_book_details,
     author_details_for_adding,
+    text_appeal_split_messages,
 )
 from utils.states import (
     AdminSupportState,
@@ -43,6 +44,8 @@ from utils.states import (
     AdminAddNewBook,
     AdminAddingNewAuthor,
     AdminChangeAuthorInExistingBook,
+    AdminInitiatedAppeal,
+    AdminSetSale,
 )
 from models import AppealStatus, AdminPermission, OrderStatus, AdminRole
 import asyncio
@@ -998,6 +1001,64 @@ async def sure_canceled_order_(
         admin_id=admin_id,
         chat_id=callback.message.chat.id,
     )
+
+
+@admin_router.callback_query(F.data.startswith("admin_contact_user_"))
+@admin_required
+async def admin_contact_user(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_SUPPORT
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        order_id = int(callback.data.split("_")[-1])
+        telegram_id = await OrderQueries.get_user_telegram_id_by_order_id(order_id)
+        if not telegram_id:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
+            return
+        admin = await AdminQueries.get_admin_by_telegram_id(callback.from_user.id)
+        if not admin:
+            await callback.answer("❌ Администратор не найден")
+            return
+        appeal_id = await SupportQueries.create_admin_initiated_appeal(
+            telegram_id=telegram_id, admin_id=admin.admin_id
+        )
+        status = await SupportQueries.check_appeal_status(appeal_id)
+        appeal = await SupportQueries.get_appeal_full(appeal_id)
+        message_parts, main_text = await text_appeal_split_messages(appeal)
+        main_message = await callback.message.edit_text(
+            text=main_text,
+            parse_mode="Markdown",
+            reply_markup=await KbAdmin.admin_appeal_actions_keyboard(
+                appeal_id, status, no_msg=True
+            ),
+        )
+        hint_message = await callback.message.answer(
+            text="💌 Напишите первое сообщение для пользователя:"
+        )
+        await state.set_state(AdminInitiatedAppeal.waiting_for_first_message)
+        await state.update_data(
+            appeal_id=appeal_id,
+            telegram_id=telegram_id,
+            order_id=order_id,  # Сохраняем order_id для возможного использования
+            admin_id=admin.admin_id,
+            admin_name=admin_name,
+            main_message_id=main_message.message_id,
+            last_hint_id=hint_message.message_id,
+            user_messages=[],
+            current_step="admin_first_message",
+        )
+        await callback.answer()
+    except Exception as e:
+        print(f"Error admin_contact_user: {e}")
+        await callback.answer("❌ Ошибка при создании обращения", show_alert=True)
 
 
 @admin_router.callback_query(F.data == "cancellation_order_by_admin_with_reason")
@@ -2911,7 +2972,324 @@ async def change_author_in_existing_book_(
         print(f"Error change_author_in_existing_book_: {e}")
 
 
+@admin_router.callback_query(F.data.startswith("admin_book_change_back_"))
+@admin_required
+async def admin_book_change_back_(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        data = await state.get_data()
+        main_message_id = data.get("main_message_id")
+        book_id = int(callback.data.split("_")[-1])
+        next_step = await AdminQueries.get_next_step_in_book_changes(book_id)
+        hint_dict = {
+            "author": "👤 Введите Автора Книги:\n\n<i>Если автор уже был добавлен ранее, то он откроется автоматически</i>",
+            "title": "📖 Укажите новое название книги:",
+            "genre": "🔮 Выберите новый жанр книги: ",
+            "year": "🗓 Укажите год издания книги ",
+            "price": "💰 Укажите цену за 1шт. без учета скидки",
+            "quantity": "📦 Укажите количество экземпляров книг для продажи ",
+            "cover": "🖼 Отправьте обложку книги в формате фотографии",
+        }
+        book_data = await BookQueries.get_book_info_for_new(book_id)
+        book_text = await get_book_text_for_adding(book_data)
+        book_done = await BookQueries.check_book_done(book_id)
+        has_cover = await BookQueries.has_cover(book_id)
+        state_mapping = {
+            "author": AdminAddNewBook.waiting_for_author_name,
+            "title": AdminAddNewBook.waiting_for_book_title,
+            "genre": AdminAddNewBook.waiting_for_book_genre,
+            "year": AdminAddNewBook.waiting_for_book_year,
+            "price": AdminAddNewBook.waiting_for_book_price,
+            "quantity": AdminAddNewBook.waiting_for_book_quantity,
+            "cover": AdminAddNewBook.waiting_for_book_cover,
+        }
+        if has_cover:
+            try:
+                await bot.delete_message(
+                    chat_id=callback.message.chat.id, message_id=main_message_id
+                )
+            except Exception as e:
+                print(
+                    f"AdminAddNewBook.editing_field Не удалось удалить подсказку: {e}"
+                )
+            main_message = await bot.send_photo(
+                chat_id=callback.message.chat.id,
+                photo=has_cover,
+                caption=book_text,
+                reply_markup=await KbAdmin.kb_new_book_changing(
+                    book_id, book_done, new_book=True
+                ),
+                parse_mode="HTML",
+            )
+            if next_step == "genre":
+                hint_message = await callback.message.answer(
+                    text=hint_dict.get(next_step),
+                    reply_markup=await KbAdmin.choose_genre_for_new_book(book_id),
+                    parse_mode="HTML",
+                )
+            else:
+                hint_message = await callback.message.answer(
+                    text=hint_dict.get(next_step), parse_mode="HTML"
+                )
+            if next_step in state_mapping:
+                await state.set_state(state_mapping[next_step])
+            else:
+                print(f"⚠️ Неизвестный шаг: {next_step}")
+            await state.update_data(
+                main_message_id=main_message.message_id,
+                chat_id=callback.message.chat.id,
+                last_hint_id=hint_message.message_id,
+            )
+            return
+        main_message = await bot.edit_message_text(
+            message_id=main_message_id,
+            chat_id=callback.message.chat.id,
+            text=book_text,
+            reply_markup=await KbAdmin.kb_new_book_changing(
+                book_id, book_done, new_book=True
+            ),
+            parse_mode="HTML",
+        )
+        if next_step == "genre":
+            hint_message = await callback.message.answer(
+                text=hint_dict.get(next_step),
+                reply_markup=await KbAdmin.choose_genre_for_new_book(book_id),
+                parse_mode="HTML",
+            )
+        else:
+            hint_message = await callback.message.answer(
+                text=hint_dict.get(next_step), parse_mode="HTML"
+            )
+        if next_step in state_mapping:
+            await state.set_state(state_mapping[next_step])
+        else:
+            print(f"⚠️ Неизвестный шаг: {next_step}")
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            chat_id=callback.message.chat.id,
+            last_hint_id=hint_message.message_id,
+        )
+        return
+    except Exception as e:
+        print(f"Error admin_book_change_back_: {e}")
+
+
+@admin_router.callback_query(F.data.startswith("admin_book_set_sale_"))
+@admin_required
+async def admin_book_set_sale_(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        book_id = int(callback.data.split("_")[-1])
+        main_message = await callback.message.edit_text(
+            text="Введите скидку в процентах (1 - 99)",
+            reply_markup=await KbAdmin.in_sale(book_id),
+        )
+        await state.set_state(AdminSetSale.waiting_for_sale_amount)
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            book_id=book_id,
+            chat_id=callback.message.chat.id,
+            last_hint_id=None,
+        )
+    except Exception as e:
+        print(f"Error admin_book_set_sale_: {e}")
+
+
+@admin_router.callback_query(F.data.startswith("confirm_sale_"))
+@admin_required
+async def confirm_book_sale(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        book_id = int(callback.data.split("_")[-1])
+        data = await state.get_data()
+        sale_percent = data.get("sale_percent")
+        chat_id = data.get("chat_id")
+        main_message_id = data.get("main_message_id")
+        last_hint_id = data.get("last_hint_id")
+        if last_hint_id:
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=last_hint_id)
+            except Exception:
+                pass
+        success = await BookQueries.update_book_sale(book_id, sale_percent)
+        if success:
+            book_data = await BookQueries.get_book_info(book_id)
+            if book_data.get("book_on_sale"):
+                text = await get_book_details_on_sale(book_data)
+            else:
+                text = await get_book_details(book_data)
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=main_message_id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=await KbAdmin.admin_book_actions(book_id),
+            )
+            temp_msg = await callback.message.answer(
+                f"✅ Скидка {sale_percent}% установлена"
+            )
+            await asyncio.sleep(1)
+            await temp_msg.delete()
+            await callback.answer(f"✅ Скидка {sale_percent}% установлена")
+        else:
+            await callback.message.answer("❌ Не удалось установить скидку")
+        await state.clear()
+    except Exception as e:
+        print(f"Error confirm_book_sale: {e}")
+        await callback.answer("❌ Ошибка при установке скидки")
+
+
+@admin_router.callback_query(F.data.startswith("cancel_sale_"))
+@admin_required
+async def cancel_book_sale(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        book_id = int(callback.data.split("_")[-1])
+        data = await state.get_data()
+        chat_id = data.get("chat_id")
+        main_message_id = data.get("main_message_id")
+        last_hint_id = data.get("last_hint_id")
+        if last_hint_id:
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=last_hint_id)
+            except Exception:
+                pass
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=main_message_id,
+            text="Введите скидку в процентах (1 - 99)",
+            reply_markup=await KbAdmin.in_sale(book_id),
+        )
+        hint_message = await callback.message.answer(
+            "🔢 <i>Введите число от 1 до 99. Можно с символом % в конце.</i>",
+            parse_mode="HTML",
+        )
+        await state.set_state(AdminSetSale.waiting_for_sale_amount)
+        await state.update_data(
+            last_hint_id=hint_message.message_id,
+        )
+        await callback.answer("❌ Установка скидки отменена")
+    except Exception as e:
+        print(f"Error cancel_book_sale: {e}")
+
+
 # FMScontext hnd
+
+
+@admin_router.message(AdminSetSale.waiting_for_sale_amount, F.text)
+@admin_required
+async def AdminSetSale_waiting_for_sale_amount(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        data = await state.get_data()
+        main_message_id = data.get("main_message_id")
+        chat_id = data.get("chat_id")
+        book_id = data.get("book_id")
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        text = message.text.strip()
+        if text.endswith("%"):
+            text = text[:-1].strip()
+        try:
+            sale_percent = int(text)
+        except ValueError:
+            error_msg = await message.answer("❌ Пожалуйста, введите число от 1 до 99")
+            await asyncio.sleep(2)
+            await error_msg.delete()
+            hint_message = await message.answer(
+                "🔢 <i>Введите число от 1 до 99. Можно с символом % в конце.</i>",
+                parse_mode="HTML",
+            )
+            await state.update_data(last_hint_id=hint_message.message_id)
+            return
+        if sale_percent < 1 or sale_percent > 99:
+            error_msg = await message.answer(
+                "❌ Скидка должна быть от 1 до 99 процентов"
+            )
+            await asyncio.sleep(2)
+            await error_msg.delete()
+            hint_message = await message.answer(
+                "🔢 <i>Введите число от 1 до 99. Можно с символом % в конце.</i>",
+                parse_mode="HTML",
+            )
+            await state.update_data(last_hint_id=hint_message.message_id)
+            return
+        book_price = await BookQueries.get_book_price(book_id)
+        if not book_price:
+            await message.answer("❌ Не удалось получить цену книги")
+            await state.clear()
+            return
+        new_price = int(book_price * (1 - sale_percent / 100))
+        confirm_text = (
+            f"📊 <b>Вы уверены, что хотите установить скидку {sale_percent}%?</b>\n\n"
+            f"📖 <i>Текущая цена:</i> {book_price}₽\n"
+            f"💰 <i>Цена со скидкой:</i> {new_price}₽\n"
+            f"🎯 <i>Размер скидки в рулях:</i> {book_price - new_price}₽"
+        )
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=main_message_id,
+            text=confirm_text,
+            parse_mode="HTML",
+            reply_markup=await KbAdmin.confirm_sale_keyboard(book_id),
+        )
+        await state.update_data(
+            sale_percent=sale_percent,
+            old_price=book_price,
+            new_price=new_price,
+        )
+        await state.set_state(AdminSetSale.confirm_sale)
+        hint_message = await message.answer(
+            "✅ <i>Нажмите 'Подтвердить' для установки скидки или 'Отмена' для отмены</i>",
+            parse_mode="HTML",
+        )
+        await state.update_data(last_hint_id=hint_message.message_id)
+    except Exception as e:
+        print(f"Error in AdminSetSale.waiting_for_sale_amount: {e}")
+
+
 @admin_router.message(AdminReasonToCancellation.waiting_reason_to_cancellation, F.text)
 @admin_required
 async def reason_to_cancellation(
@@ -2947,6 +3325,100 @@ async def reason_to_cancellation(
         )
     except Exception as e:
         print(f"Ошибка при обработке отмены заказа: {e}")
+
+
+@admin_router.message(AdminInitiatedAppeal.waiting_for_first_message)
+@admin_required
+async def admin_first_appeal_message(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    bot = message.bot
+    data = await state.get_data()
+    appeal_id = data["appeal_id"]
+    telegram_id = data["telegram_id"]
+    admin_id = data["admin_id"]
+    order_id = data.get("order_id")
+    user_name = data.get("user_name", "")
+    stored_admin_name = data.get("admin_name", admin_name)
+    last_hint_id = data.get("last_hint_id")
+    old_main_message_id = data.get("main_message_id")
+    if last_hint_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_hint_id)
+        except Exception:
+            pass
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    full_message = message.text
+    if order_id:
+        full_message = f"{message.text}\n\n📦 _Связано с заказом #{order_id}_"
+    await AdminQueries.admin_support_to_user(
+        admin_id=admin_id, appeal_id=appeal_id, message=full_message
+    )
+    try:
+        await bot.send_message(
+            chat_id=telegram_id,
+            text=f"📨 *Новое обращение от администратора {stored_admin_name}:*\n\n"
+            f"{message.text}\n\n"
+            f"_ID обращения: #{appeal_id}_"
+            + (f"\n_Связано с заказом: #{order_id}_" if order_id else ""),
+            parse_mode="Markdown",
+            reply_markup=await SupportKeyboards.open_appel(appeal_id),
+        )
+        user_notified = True
+    except Exception as e:
+        print(f"Не удалось отправить сообщение пользователю: {e}")
+        user_notified = False
+    if old_main_message_id:
+        try:
+            await bot.delete_message(
+                chat_id=message.chat.id, message_id=old_main_message_id
+            )
+        except Exception:
+            pass
+    appeal = await SupportQueries.get_appeal_full(appeal_id)
+    status = await SupportQueries.check_appeal_status(appeal_id)
+    message_parts, main_text = await text_appeal_split_messages(appeal)
+    user_info = f"👤 Пользователь: {user_name}"
+    if data.get("user_username"):
+        user_info += f" {data.get('user_username')}"
+    order_info = f"📦 Связанный заказ: #{order_id}" if order_id else ""
+    full_main_text = f"{main_text}\n{user_info}\n{order_info}"
+    new_messages_to_delete = []
+    if message_parts:
+        for i, part in enumerate(message_parts):
+            part_text = part
+            if len(message_parts) > 1:
+                part_text = f"*Часть {i + 1} из {len(message_parts)}*\n\n" + part_text
+            msg = await message.answer(part_text, parse_mode="Markdown")
+            new_messages_to_delete.append(msg.message_id)
+    main_message = await message.answer(
+        text=full_main_text,
+        reply_markup=await KbAdmin.admin_appeal_actions_keyboard(appeal_id, status),
+        parse_mode="Markdown",
+    )
+    confirm_text = "✅ Обращение создано" + (
+        " и сообщение отправлено пользователю!"
+        if user_notified
+        else ", но не удалось уведомить пользователя"
+    )
+    confirmation = await message.answer(confirm_text)
+    await asyncio.sleep(1)
+    await confirmation.delete()
+    await state.update_data(
+        messages_to_delete=new_messages_to_delete,
+        main_message_id=main_message.message_id,
+        last_hint_id=None,
+        user_messages=[],
+    )
+    await state.set_state(AdminSupportState.message_from_support)
 
 
 @admin_router.message(AdminSupportState.message_from_support, F.text)
@@ -4346,7 +4818,7 @@ async def AdminChangeAuthorInExistingBook_waiting_for_author_name(
 
 
 @admin_router.message(AdminChangeAuthorInExistingBook.waiting_for_author_country)
-# @admin_required
+@admin_required
 async def AdminChangeAuthorInExistingBook_waiting_for_author_country(
     message: Message,
     state: FSMContext,
@@ -4402,15 +4874,15 @@ async def AdminChangeAuthorInExistingBook_waiting_for_author_country(
             ),
         )
         await state.clear()
-        # await state.set_state(AdminChangeAuthorInExistingBook.waiting_completion)
-        # await state.update_data(
-        #     main_message_id=main_message.message_id,
-        #     new_author_id=new_author_id,
-        #     old_author_id=old_author_id,
-        #     book_id=book_id,
-        #     chat_id=chat_id,
-        # )
-        # return
+        await state.set_state(AdminChangeAuthorInExistingBook.waiting_completion)
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            new_author_id=new_author_id,
+            old_author_id=old_author_id,
+            book_id=book_id,
+            chat_id=chat_id,
+        )
+        return
     except Exception as e:
         print(
             f"Ошибка AdminChangeAuthorInExistingBook_waiting_for_author_country: {type(e).__name__}: {e}"

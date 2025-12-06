@@ -468,6 +468,18 @@ async def add_to_cart_book(callback: CallbackQuery):
     if not availability["available"]:
         await callback.answer(f"❌ {availability['message']}", show_alert=True)
         return
+    cart_check = await OrderQueries.check_cart_quantity_limit(
+        telegram_id, book_id, quantity_to_add=1
+    )
+    if not cart_check["can_add"]:
+        await callback.answer(
+            f"❌ Превышен лимит!\n"
+            f"В корзине уже: {cart_check['current_in_cart']} шт.\n"
+            f"На складе: {cart_check['available_quantity']} шт.\n"
+            f"Можно добавить: {cart_check['max_can_add']} шт.",
+            show_alert=True,
+        )
+        return
     await OrderQueries.add_book_to_cart(telegram_id, book_id)
     total_price, books_in_cart = await OrderQueries.get_cart_total(telegram_id)
     total_books_count = sum(book["quantity"] for book in books_in_cart)
