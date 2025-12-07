@@ -1203,8 +1203,8 @@ class KbAdmin:
                 0,
                 [
                     InlineKeyboardButton(
-                        text="% Назначить скидку",
-                        callback_data=f"admin_book_set_sale_{book_id}",
+                        text="% Управление скидкой",
+                        callback_data=f"sale_menu_{book_id}",
                     ),
                 ],
             )
@@ -1343,6 +1343,34 @@ class KbAdmin:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
+    async def sale_menu(book_id: int, has_sale: bool) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="% Назначить новую скидку",
+                    callback_data=f"admin_book_set_sale_{book_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад",
+                    callback_data=f"admin_change_existing_book_{book_id}",
+                )
+            ],
+        ]
+        if has_sale:
+            keyboard.insert(
+                1,
+                [
+                    InlineKeyboardButton(
+                        text="❌ Удалить скидку",
+                        callback_data=f"delete_sale_{book_id}",
+                    )
+                ],
+            )
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
     async def in_sale(book_id: int) -> InlineKeyboardMarkup:
         keyboard = [
             [
@@ -1350,6 +1378,29 @@ class KbAdmin:
                     text="❌ Отмена", callback_data=f"cancel_sale_{book_id}"
                 )
             ]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def after_sale_applied(book_id: int) -> InlineKeyboardMarkup:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="✏️ Изменить скидку", callback_data=f"sale_menu_{book_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Удалить скидку",
+                    callback_data=f"delete_sale_{book_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад к книге",
+                    callback_data=f"admin_change_existing_book_{book_id}",
+                )
+            ],
         ]
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

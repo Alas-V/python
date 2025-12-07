@@ -33,6 +33,7 @@ from text_templates import (
     get_book_details,
     author_details_for_adding,
     text_appeal_split_messages,
+    get_book_text_for_sale,
 )
 from utils.states import (
     AdminSupportState,
@@ -2455,11 +2456,12 @@ async def admin_change_book_(
     book_id = int(callback.data.split("_")[-1])
     data = await state.get_data()
     main_message_id = data.get("main_message_id")
-    chat_id = data.get("chat_id")
     last_hint_id = data.get("last_hint_id")
     if last_hint_id:
         try:
-            await bot.delete_message(chat_id=chat_id, message_id=last_hint_id)
+            await bot.delete_message(
+                chat_id=callback.message.chat.id, message_id=last_hint_id
+            )
         except Exception as e:
             print(f"Не удалось удалить старое сообщение: {e}")
     book_data = await BookQueries.get_book_info_for_new(book_id)
@@ -2468,11 +2470,13 @@ async def admin_change_book_(
     has_cover = await BookQueries.has_cover(book_id)
     if has_cover:
         try:
-            await bot.delete_message(chat_id=chat_id, message_id=main_message_id)
+            await bot.delete_message(
+                chat_id=callback.message.chat.id, message_id=main_message_id
+            )
         except Exception as e:
             print(f"Не удалось удалить старое сообщение: {e}")
         main_message = await bot.send_photo(
-            chat_id=chat_id,
+            chat_id=callback.message.chat.id,
             photo=has_cover,
             caption=book_text + "\n\n<i>Выберите что вы хотите поменять в книге</i>",
             reply_markup=await KbAdmin.kb_new_book_changing(
@@ -2484,7 +2488,7 @@ async def admin_change_book_(
         return
     main_message = await bot.edit_message_text(
         message_id=main_message_id,
-        chat_id=chat_id,
+        chat_id=callback.message.chat.id,
         text=book_text + "\n\n<i>Выберите что вы хотите отредактировать в книге</i>",
         reply_markup=await KbAdmin.kb_new_book_changing(
             book_id, book_done, new_book=True
@@ -2495,9 +2499,52 @@ async def admin_change_book_(
     return
 
 
+@admin_router.callback_query(F.data.startswith("admin_change_existing_book_"))
+@admin_required
+async def admin_change_existing_book_(
+    callback: CallbackQuery,
+    bot: Bot,
+    state: FSMContext,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    book_id = int(callback.data.split("_")[-1])
+    book_data = await BookQueries.get_book_info_for_new(book_id)
+    book_text = await get_book_text_for_adding(book_data)
+    book_done = await BookQueries.check_book_done(book_id)
+    has_cover = await BookQueries.has_cover(book_id)
+    if has_cover:
+        try:
+            await callback.message.delete()
+        except Exception as e:
+            print(f"Не удалось удалить старое сообщение: {e}")
+        main_message = await bot.send_photo(
+            chat_id=callback.message.chat.id,
+            photo=has_cover,
+            caption=book_text + "\n\n<i>Выберите что вы хотите поменять в книге</i>",
+            reply_markup=await KbAdmin.kb_new_book_changing(book_id, book_done),
+            parse_mode="HTML",
+        )
+        await state.update_data(main_message_id=main_message.message_id)
+        return
+    main_message = await callback.message.edit_text(
+        text=book_text + "\n\n<i>Выберите что вы хотите отредактировать в книге</i>",
+        reply_markup=await KbAdmin.kb_new_book_changing(book_id, book_done),
+        parse_mode="HTML",
+    )
+    await state.update_data(main_message_id=main_message.message_id)
+    return
+
+
 @admin_router.callback_query(F.data.startswith("admin_book_change_"))
 @admin_required
-async def admin_book_settings_(
+async def admin_book_change_(
     callback: CallbackQuery,
     bot: Bot,
     state: FSMContext,
@@ -2533,14 +2580,16 @@ async def admin_book_settings_(
         "cover": "🖼 Отправьте обложку книги в формате фотографии",
     }
     if what_to_change == "genre":
+        message_text = hint_dict.get(what_to_change)
         hint_message = await callback.message.answer(
-            text=hint_dict.get(what_to_change),
+            text=message_text,
             reply_markup=await KbAdmin.choose_genre_for_new_book_manually(book_id),
             parse_mode="HTML",
         )
     else:
+        message_text = hint_dict.get(what_to_change)
         hint_message = await callback.message.answer(
-            text=hint_dict.get(what_to_change), parse_mode="HTML"
+            text=message_text, parse_mode="HTML"
         )
     if what_to_change == "cover":
         await state.set_state(AdminAddNewBook.editing_cover)
@@ -3085,6 +3134,161 @@ async def admin_book_change_back_(
         print(f"Error admin_book_change_back_: {e}")
 
 
+@admin_router.callback_query(F.data.startswith("sale_menu_"))
+@admin_required
+async def sale_menu_(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        book_id = int(callback.data.split("_")[-1])
+        has_sale = await BookQueries.has_sale(book_id)
+        has_cover = await BookQueries.has_cover(book_id)
+        book_data = await BookQueries.get_book_sale_info(book_id)
+        if not book_data:
+            await callback.answer("❌ Книга не найдена", show_alert=True)
+            return
+        book_text = await get_book_text_for_sale(book_data)
+        if has_cover:
+            try:
+                await callback.message.delete()
+            except Exception as e:
+                print(f"Не удалось удалить старое сообщение: {e}")
+            main_message = await bot.send_photo(
+                chat_id=callback.message.chat.id,
+                photo=has_cover,
+                caption=book_text,
+                reply_markup=await KbAdmin.sale_menu(book_id, has_sale),
+                parse_mode="HTML",
+            )
+            await state.update_data(has_cover=True, cover_file_id=has_cover)
+        else:
+            main_message = await callback.message.edit_text(
+                text=book_text,
+                reply_markup=await KbAdmin.sale_menu(book_id, has_sale),
+                parse_mode="HTML",
+            )
+            await state.update_data(has_cover=False, cover_file_id=None)
+        await state.update_data(
+            main_message_id=main_message.message_id,
+            book_id=book_id,
+            chat_id=callback.message.chat.id,
+        )
+        await callback.answer()
+    except Exception as e:
+        print(f"Error in sale_menu : {e}")
+
+
+@admin_router.callback_query(F.data.startswith("delete_sale_"))
+@admin_required
+async def delete_book_sale(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    if not PermissionChecker.has_permission(
+        admin_permissions, AdminPermission.MANAGE_BOOKS
+    ):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    try:
+        book_id = int(callback.data.split("_")[-1])
+        data = await state.get_data()
+        last_hint_id = data.get("last_hint_id")
+        chat_id = callback.message.chat.id
+        if last_hint_id:
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=last_hint_id)
+            except Exception:
+                pass
+        success = await BookQueries.remove_book_sale(book_id)
+        if success:
+            book_data = await BookQueries.get_book_info_for_new(book_id)
+            if not book_data:
+                await callback.answer("❌ Книга не найдена", show_alert=True)
+                return
+            book_text = await get_book_text_for_sale(book_data)
+            has_cover = await BookQueries.has_cover(book_id)
+            data = await state.get_data()
+            cover_file_id = data.get("cover_file_id")
+            if has_cover and cover_file_id:
+                if callback.message.photo:
+                    await callback.message.edit_caption(
+                        caption=book_text,
+                        reply_markup=await KbAdmin.sale_menu(book_id, has_sale=False),
+                        parse_mode="HTML",
+                    )
+                else:
+                    try:
+                        await callback.message.delete()
+                    except Exception:
+                        pass
+                    main_message = await bot.send_photo(
+                        chat_id=chat_id,
+                        photo=cover_file_id,
+                        caption=book_text,
+                        reply_markup=await KbAdmin.sale_menu(book_id, has_sale=False),
+                        parse_mode="HTML",
+                    )
+                    await state.update_data(
+                        main_message_id=main_message.message_id,
+                        has_cover=True,
+                        cover_file_id=cover_file_id,
+                    )
+            else:
+                if callback.message.photo:
+                    try:
+                        await callback.message.delete()
+                    except Exception:
+                        pass
+                    main_message = await callback.message.answer(
+                        text=book_text,
+                        reply_markup=await KbAdmin.sale_menu(book_id, has_sale=False),
+                        parse_mode="HTML",
+                    )
+                    await state.update_data(
+                        main_message_id=main_message.message_id,
+                        has_cover=False,
+                        cover_file_id=None,
+                    )
+                else:
+                    await callback.message.edit_text(
+                        text=book_text,
+                        reply_markup=await KbAdmin.sale_menu(book_id, has_sale=False),
+                        parse_mode="HTML",
+                    )
+            await callback.answer("✅ Скидка удалена")
+            current_data = await state.get_data()
+            keys_to_keep = [
+                "main_message_id",
+                "chat_id",
+                "has_cover",
+                "cover_file_id",
+                "book_id",
+            ]
+            new_data = {
+                k: current_data.get(k) for k in keys_to_keep if k in current_data
+            }
+            await state.set_data(new_data)
+        else:
+            await callback.answer("❌ Не удалось удалить скидку", show_alert=True)
+    except Exception as e:
+        print(f"Error in delete_book_sale: {e}")
+        await callback.answer("❌ Ошибка при удалении скидки", show_alert=True)
+
+
 @admin_router.callback_query(F.data.startswith("admin_book_set_sale_"))
 @admin_required
 async def admin_book_set_sale_(
@@ -3102,16 +3306,41 @@ async def admin_book_set_sale_(
         return
     try:
         book_id = int(callback.data.split("_")[-1])
-        main_message = await callback.message.edit_text(
-            text="Введите скидку в процентах (1 - 99)",
-            reply_markup=await KbAdmin.in_sale(book_id),
+        has_cover = await BookQueries.has_cover(book_id)
+        book_data = await BookQueries.get_book_sale_info(book_id)
+        if not book_data:
+            await callback.answer("❌ Книга не найдена", show_alert=True)
+            return
+        book_text = await get_book_text_for_sale(book_data)
+        if has_cover:
+            try:
+                await callback.message.delete()
+            except Exception as e:
+                print(f"Не удалось удалить старое сообщение: {e}")
+            main_message = await bot.send_photo(
+                chat_id=callback.message.chat.id,
+                photo=has_cover,
+                caption=book_text,
+                reply_markup=await KbAdmin.in_sale(book_id),
+                parse_mode="HTML",
+            )
+            await state.update_data(has_cover=True, cover_file_id=has_cover)
+        else:
+            main_message = await callback.message.edit_text(
+                text=book_text,
+                reply_markup=await KbAdmin.in_sale(book_id),
+                parse_mode="HTML",
+            )
+            await state.update_data(has_cover=False, cover_file_id=None)
+        hint_message = await bot.send_message(
+            chat_id=callback.message.chat.id, text="Введите скидку в процентах (1 - 99)"
         )
         await state.set_state(AdminSetSale.waiting_for_sale_amount)
         await state.update_data(
             main_message_id=main_message.message_id,
             book_id=book_id,
             chat_id=callback.message.chat.id,
-            last_hint_id=None,
+            last_hint_id=hint_message.message_id,
         )
     except Exception as e:
         print(f"Error admin_book_set_sale_: {e}")
@@ -3134,6 +3363,8 @@ async def confirm_book_sale(
         chat_id = data.get("chat_id")
         main_message_id = data.get("main_message_id")
         last_hint_id = data.get("last_hint_id")
+        has_cover = data.get("has_cover", False)
+        cover_file_id = data.get("cover_file_id")
         if last_hint_id:
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=last_hint_id)
@@ -3141,18 +3372,25 @@ async def confirm_book_sale(
                 pass
         success = await BookQueries.update_book_sale(book_id, sale_percent)
         if success:
-            book_data = await BookQueries.get_book_info(book_id)
-            if book_data.get("book_on_sale"):
-                text = await get_book_details_on_sale(book_data)
-            else:
-                text = await get_book_details(book_data)
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=main_message_id,
-                text=text,
-                parse_mode="HTML",
-                reply_markup=await KbAdmin.admin_book_actions(book_id),
-            )
+            book_data = await BookQueries.get_book_sale_info(book_id)
+            if book_data:
+                book_text = await get_book_text_for_sale(book_data)
+                if has_cover and cover_file_id:
+                    await bot.edit_message_caption(
+                        chat_id=chat_id,
+                        message_id=main_message_id,
+                        caption=book_text,
+                        parse_mode="HTML",
+                        reply_markup=await KbAdmin.after_sale_applied(book_id),
+                    )
+                else:
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=main_message_id,
+                        text=book_text,
+                        parse_mode="HTML",
+                        reply_markup=await KbAdmin.after_sale_applied(book_id),
+                    )
             temp_msg = await callback.message.answer(
                 f"✅ Скидка {sale_percent}% установлена"
             )
@@ -3160,7 +3398,7 @@ async def confirm_book_sale(
             await temp_msg.delete()
             await callback.answer(f"✅ Скидка {sale_percent}% установлена")
         else:
-            await callback.message.answer("❌ Не удалось установить скидку")
+            await callback.answer("❌ Не удалось установить скидку")
         await state.clear()
     except Exception as e:
         print(f"Error confirm_book_sale: {e}")
@@ -3183,25 +3421,32 @@ async def cancel_book_sale(
         chat_id = data.get("chat_id")
         main_message_id = data.get("main_message_id")
         last_hint_id = data.get("last_hint_id")
+        has_cover = data.get("has_cover", False)
+        cover_file_id = data.get("cover_file_id")
         if last_hint_id:
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=last_hint_id)
             except Exception:
                 pass
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=main_message_id,
-            text="Введите скидку в процентах (1 - 99)",
-            reply_markup=await KbAdmin.in_sale(book_id),
-        )
-        hint_message = await callback.message.answer(
-            "🔢 <i>Введите число от 1 до 99. Можно с символом % в конце.</i>",
-            parse_mode="HTML",
-        )
-        await state.set_state(AdminSetSale.waiting_for_sale_amount)
-        await state.update_data(
-            last_hint_id=hint_message.message_id,
-        )
+        book_data = await BookQueries.get_book_info_for_new(book_id)
+        book_text = await get_book_text_for_sale(book_data)
+        if has_cover and cover_file_id:
+            await bot.edit_message_caption(
+                chat_id=chat_id,
+                message_id=main_message_id,
+                caption=book_text,
+                parse_mode="HTML",
+                reply_markup=await KbAdmin.sale_menu(book_id, has_sale=False),
+            )
+        else:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=main_message_id,
+                text=book_text,
+                parse_mode="HTML",
+                reply_markup=await KbAdmin.sale_menu(book_id, has_sale=False),
+            )
+        await state.set_state(None)
         await callback.answer("❌ Установка скидки отменена")
     except Exception as e:
         print(f"Error cancel_book_sale: {e}")
@@ -3225,6 +3470,14 @@ async def AdminSetSale_waiting_for_sale_amount(
         main_message_id = data.get("main_message_id")
         chat_id = data.get("chat_id")
         book_id = data.get("book_id")
+        has_cover = data.get("has_cover", False)
+        cover_file_id = data.get("cover_file_id")
+        last_hint_id = data.get("last_hint_id")
+        if last_hint_id:
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=last_hint_id)
+            except Exception:
+                pass
         try:
             await message.delete()
         except Exception:
@@ -3256,25 +3509,35 @@ async def AdminSetSale_waiting_for_sale_amount(
             )
             await state.update_data(last_hint_id=hint_message.message_id)
             return
-        book_price = await BookQueries.get_book_price(book_id)
-        if not book_price:
-            await message.answer("❌ Не удалось получить цену книги")
+        book_data = await BookQueries.get_book_sale_info(book_id)
+        if not book_data:
+            await message.answer("❌ Не удалось получить данные книги")
             await state.clear()
             return
+        book_price = book_data.get("book_price", 0)
         new_price = int(book_price * (1 - sale_percent / 100))
         confirm_text = (
             f"📊 <b>Вы уверены, что хотите установить скидку {sale_percent}%?</b>\n\n"
             f"📖 <i>Текущая цена:</i> {book_price}₽\n"
             f"💰 <i>Цена со скидкой:</i> {new_price}₽\n"
-            f"🎯 <i>Размер скидки в рулях:</i> {book_price - new_price}₽"
+            f"🎯 <i>Размер скидки в рублях:</i> {book_price - new_price}₽"
         )
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=main_message_id,
-            text=confirm_text,
-            parse_mode="HTML",
-            reply_markup=await KbAdmin.confirm_sale_keyboard(book_id),
-        )
+        if has_cover and cover_file_id:
+            await bot.edit_message_caption(
+                chat_id=chat_id,
+                message_id=main_message_id,
+                caption=confirm_text,
+                parse_mode="HTML",
+                reply_markup=await KbAdmin.confirm_sale_keyboard(book_id),
+            )
+        else:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=main_message_id,
+                text=confirm_text,
+                parse_mode="HTML",
+                reply_markup=await KbAdmin.confirm_sale_keyboard(book_id),
+            )
         await state.update_data(
             sale_percent=sale_percent,
             old_price=book_price,

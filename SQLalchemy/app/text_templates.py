@@ -55,6 +55,36 @@ async def get_book_details_on_sale(book_data: dict):
 """
 
 
+async def get_book_text_for_sale(book_data: dict) -> str:
+    """Текст книги для меню скидки - использует get_book_sale_info"""
+    title = book_data.get("book_title", "Не указан")
+    price = book_data.get("book_price", 0)
+    raw_sale = book_data.get("book_on_sale")
+    raw_sale_value = book_data.get("sale_value")
+
+    if raw_sale and raw_sale_value:
+        sale_percent = int(raw_sale_value * 100)
+        discounted_price = int(price * (1 - raw_sale_value))
+        return f"""
+📖 <b>{title}</b>
+
+🎯 <b>Текущая скидка:</b> {sale_percent}%
+💰 <b>Базовая цена:</b> {price} ₽
+💵 <b>Цена со скидкой:</b> {discounted_price} ₽
+
+<i>Выберите действие:</i>
+"""
+    else:
+        return f"""
+📖 <b>{title}</b>
+
+💰 <b>Текущая цена:</b> {price} ₽
+🎯 <b>Скидка:</b> нет
+
+<i>Выберите действие:</i>
+"""
+
+
 async def get_book_text_for_adding(book_data: dict) -> str:
     raw_title = book_data.get("book_title")
     raw_author = book_data.get("author_name")

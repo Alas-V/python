@@ -196,7 +196,7 @@ class UserKeyboards:
                 [
                     InlineKeyboardButton(
                         text="⚙️ Управление товаром ",
-                        callback_data=f"admin_book_settings_{book_id}",
+                        callback_data=f"admin_change_existing_book_{book_id}",
                     )
                 ],
             )

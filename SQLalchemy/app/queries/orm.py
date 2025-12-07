@@ -590,6 +590,19 @@ class BookQueries:
             return result.mappings().first()
 
     @staticmethod
+    async def get_book_sale_info(book_id: int):
+        async with AsyncSessionLocal() as session:
+            query = select(
+                Book.book_id,
+                Book.book_title,
+                Book.book_price,
+                Book.book_on_sale,
+                Book.sale_value,
+            ).where(Book.book_id == book_id)
+            result = await session.execute(query)
+            return result.mappings().first()
+
+    @staticmethod
     async def get_book_price(book_id: int) -> Optional[int]:
         async with AsyncSessionLocal() as session:
             query = select(Book.book_price).where(Book.book_id == book_id)
@@ -597,19 +610,51 @@ class BookQueries:
             return result.scalar_one_or_none()
 
     @staticmethod
+    async def remove_book_sale(book_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            try:
+                stmt = select(Book).where(Book.book_id == book_id)
+                result = await session.execute(stmt)
+                book = result.scalar_one_or_none()
+                if not book:
+                    return False
+                book.book_on_sale = False
+                book.sale_value = None
+                book.updated_at = datetime.now()
+                await session.commit()
+                return True
+            except Exception as e:
+                await session.rollback()
+                print(f"Error removing book sale: {e}")
+                return False
+
+    @staticmethod
     async def update_book_sale(book_id: int, sale_percent: int) -> bool:
         async with AsyncSessionLocal() as session:
-            sale_value = sale_percent / 100
-            stmt = (
-                update(Book)
-                .where(Book.book_id == book_id)
-                .values(
-                    book_on_sale=True, sale_value=sale_value, updated_at=datetime.now()
-                )
+            try:
+                sale_value = sale_percent / 100
+                stmt = select(Book).where(Book.book_id == book_id)
+                result = await session.execute(stmt)
+                book = result.scalar_one_or_none()
+                if not book:
+                    return False
+                book.book_on_sale = True
+                book.sale_value = sale_value
+                book.updated_at = datetime.now()
+                await session.commit()
+                return True
+            except Exception as e:
+                await session.rollback()
+                print(f"Error updating book sale: {e}")
+                return False
+
+    @staticmethod
+    async def has_sale(book_id: int) -> bool:
+        async with AsyncSessionLocal() as session:
+            query = await session.execute(
+                select(Book.book_on_sale).where(Book.book_id == book_id)
             )
-            await session.execute(stmt)
-            await session.commit()
-            return True
+            return query.scalar_one_or_none()
 
 
 class SaleQueries:
