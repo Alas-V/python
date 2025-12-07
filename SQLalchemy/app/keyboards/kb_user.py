@@ -1,5 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from queries.orm import OrderQueries
+from typing import Dict, List
 
 
 class UserKeyboards:
@@ -8,7 +9,7 @@ class UserKeyboards:
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="🔥 Товары со скидкой 🔥", callback_data="sale_menu"
+                    text="🔥 Товары со скидкой 🔥", callback_data="show_genre_on_sale"
                 )
             ],
             [
@@ -39,6 +40,10 @@ class UserKeyboards:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
+                    InlineKeyboardButton(
+                        text="🔎 Поиск по названию книги", callback_data="search_book"
+                    )
+                ][
                     InlineKeyboardButton(text="✒️Поэзия", callback_data="genre_poetry"),
                     InlineKeyboardButton(
                         text="🎭Классическая литература", callback_data="genre_classic"
@@ -417,3 +422,40 @@ class UserKeyboards:
                 ],
             )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    async def user_search_results_keyboard(books: List[Dict]) -> InlineKeyboardMarkup:
+        inline_keyboard = []
+        for book in books:
+            button_text = f"📖 {book['book_title']}"
+            if book.get("author_name"):
+                button_text = f"📖 {book['book_title']} - {book['author_name']}"
+            if len(button_text) > 40:
+                button_text = button_text[:37] + "..."
+            inline_keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=button_text, callback_data=f"book_{book['book_id']}"
+                    )
+                ]
+            )
+        inline_keyboard.append(
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="catalog")]
+        )
+        return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+    @staticmethod
+    async def back_from_search() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="catalog")]
+            ]
+        )
+
+    @staticmethod
+    async def in_book_search() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="catalog")]
+            ]
+        )

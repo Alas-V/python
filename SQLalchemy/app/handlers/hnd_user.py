@@ -1,4 +1,4 @@
-from aiogram import F, Router, types
+from aiogram import Bot, F, Router, types
 from queries.orm import (
     OrderQueries,
     BookQueries,
@@ -20,9 +20,10 @@ from text_templates import (
 )
 from models import AdminPermission
 from aiogram.exceptions import TelegramBadRequest
-from utils.states import BookDetailsState
+from utils.states import BookDetailsState, UserSearchBook
 from utils.admin_utils import PermissionChecker
 from aiogram.fsm.context import FSMContext
+import asyncio
 
 user_router = Router()
 
@@ -568,3 +569,59 @@ async def full_review(callback: CallbackQuery):
         reply_markup=await UserKeyboards.kb_in_review(own_review, review_id, book_id),
         parse_mode="Markdown",
     )
+
+
+@user_router.callback_query(F.data == "search_book")
+async def search_book_start(callback: CallbackQuery, state: FSMContext):
+    try:
+        await callback.message.edit_text(
+            text="🔍 Введите название книги для поиска:",
+            reply_markup=await UserKeyboards.back_from_search(),
+        )
+        await state.set_state(UserSearchBook.waiting_for_book_name)
+        await state.update_data(chat_id=callback.message.chat.id)
+        await callback.answer()
+    except Exception as e:
+        print(f"Error search_book_start: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
+
+
+# FSM context
+
+
+@user_router.message(UserSearchBook.waiting_for_book_name, F.text)
+async def user_search_book_handler(message: Message, state: FSMContext, bot: Bot):
+    try:
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        search_query = message.text.strip()
+        if len(search_query) < 2:
+            error_msg = await message.answer("❌ Введите минимум 2 символа")
+            await asyncio.sleep(2)
+            await error_msg.delete()
+            return
+        books = await BookQueries.search_books_by_title_for_user(search_query)
+        if not books:
+            await message.answer(
+                f"🔍 По запросу '{search_query}' ничего не найдено.\n\nПопробуйте другой запрос:",
+                reply_markup=await UserKeyboards.in_book_search(),
+            )
+            await state.clear()
+            return
+        if len(books) == 20:
+            results_text = (
+                f"🔍 По запросу '{search_query}' найдено 20+ книг:\n\nВыберите книгу:"
+            )
+        else:
+            results_text = f"🔍 По запросу '{search_query}' найдено {len(books)} книг:\n\nВыберите книгу:"
+        await message.answer(
+            text=results_text,
+            reply_markup=await UserKeyboards.user_search_results_keyboard(books),
+        )
+        await state.clear()
+    except Exception as e:
+        print(f"Error in user_search_book_handler: {e}")
+        await message.answer("❌ Ошибка при поиске")
+        await state.clear()

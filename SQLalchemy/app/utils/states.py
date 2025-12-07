@@ -89,3 +89,11 @@ class AdminChangeAuthorInExistingBook(StatesGroup):
 class AdminSetSale(StatesGroup):
     waiting_for_sale_amount = State()
     confirm_sale = State()
+
+
+class AdminSearchBook(StatesGroup):
+    waiting_for_book_name_for_search = State()
+
+
+class UserSearchBook(StatesGroup):
+    waiting_for_book_name = State()

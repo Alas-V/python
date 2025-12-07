@@ -25,7 +25,7 @@ import random
 from datetime import datetime, timedelta
 from sqlalchemy import case, select, text, func, and_, update, or_
 from sqlalchemy.orm import selectinload, joinedload
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 import math
 from typing import Optional
 from authors import REAL_AUTHORS
@@ -656,6 +656,193 @@ class BookQueries:
             )
             return query.scalar_one_or_none()
 
+    @staticmethod
+    async def search_books_by_title_for_admin(
+        title_query: str, limit: int = 20
+    ) -> List[Dict]:
+        async with AsyncSessionLocal() as session:
+            try:
+                stmt = (
+                    select(Book.book_id, Book.book_title, Author.author_name)
+                    .join(Author, Book.author_id == Author.author_id)
+                    .where(Book.book_title.ilike(f"%{title_query}%"))
+                    .order_by(Book.book_title)
+                    .limit(limit)
+                )
+                result = await session.execute(stmt)
+                rows = result.fetchall()
+                books_list = []
+                for row in rows:
+                    books_list.append(
+                        {
+                            "book_id": row.book_id,
+                            "book_title": row.book_title,
+                            "author_name": row.author_name,
+                        }
+                    )
+                return books_list
+            except Exception as e:
+                print(f"Error in search_books_by_title_for_admin: {e}")
+                return []
+
+    @staticmethod
+    async def search_books_by_title_with_pagination(
+        title_query: str, offset: int = 0, limit: int = 10
+    ) -> Tuple[List[Dict], int]:
+        async with AsyncSessionLocal() as session:
+            try:
+                stmt = (
+                    select(Book)
+                    .options(selectinload(Book.author))
+                    .where(Book.book_title.ilike(f"%{title_query}%"))
+                    .order_by(Book.book_title)
+                    .offset(offset)
+                    .limit(limit)
+                )
+                result = await session.execute(stmt)
+                books = result.scalars().all()
+                books_list = []
+                for book in books:
+                    books_list.append(
+                        {
+                            "book_id": book.book_id,
+                            "book_title": book.book_title,
+                            "author_name": book.author.author_name
+                            if book.author
+                            else None,
+                        }
+                    )
+                count_stmt = select(func.count(Book.book_id)).where(
+                    Book.book_title.ilike(f"%{title_query}%")
+                )
+                total_count = await session.scalar(count_stmt)
+                return books_list, total_count
+            except Exception as e:
+                print(f"Error in search_books_by_title_with_pagination: {e}")
+                return [], 0
+
+    @staticmethod
+    async def search_books_by_title(title_query: str, limit: int = 20) -> List[Dict]:
+        async with AsyncSessionLocal() as session:
+            try:
+                stmt = (
+                    select(Book)
+                    .options(selectinload(Book.author))
+                    .where(Book.book_title.ilike(f"%{title_query}%"))
+                    .order_by(Book.book_title)
+                    .limit(limit)
+                )
+                result = await session.execute(stmt)
+                books = result.scalars().all()
+                books_list = []
+                for book in books:
+                    books_list.append(
+                        {
+                            "book_id": book.book_id,
+                            "book_title": book.book_title,
+                            "author_name": book.author.author_name
+                            if book.author
+                            else None,
+                            "book_price": book.book_price,
+                            "book_in_stock": book.book_in_stock,
+                        }
+                    )
+                return books_list
+            except Exception as e:
+                print(f"Error in search_books_by_title: {e}")
+                return []
+
+    @staticmethod
+    async def get_books_not_in_stock(limit: int = 50) -> List[Dict]:
+        async with AsyncSessionLocal() as session:
+            try:
+                stmt = (
+                    select(Book)
+                    .options(selectinload(Book.author))
+                    .where(or_(Book.book_in_stock == False, Book.book_quantity <= 0))
+                    .order_by(Book.book_title)
+                    .limit(limit)
+                )
+                result = await session.execute(stmt)
+                books = result.scalars().all()
+                books_list = []
+                for book in books:
+                    books_list.append(
+                        {
+                            "book_id": book.book_id,
+                            "book_title": book.book_title,
+                            "author_name": book.author.author_name
+                            if book.author
+                            else None,
+                            "book_price": book.book_price,
+                            "book_quantity": book.book_quantity,
+                            "book_in_stock": book.book_in_stock,
+                        }
+                    )
+                return books_list
+            except Exception as e:
+                print(f"Error in get_books_not_in_stock: {e}")
+                return []
+
+    @staticmethod
+    async def search_books_by_title_for_user(
+        title_query: str, limit: int = 20
+    ) -> List[Dict]:
+        async with AsyncSessionLocal() as session:
+            try:
+                stmt = (
+                    select(Book)
+                    .options(selectinload(Book.author))
+                    .where(
+                        and_(
+                            Book.book_title.ilike(f"%{title_query}%"),
+                            Book.book_in_stock == True,
+                            Book.book_status == BookStatus.APPROVED,
+                        )
+                    )
+                    .order_by(Book.book_title)
+                    .limit(limit)
+                )
+                result = await session.execute(stmt)
+                books = result.scalars().all()
+                books_list = []
+                for book in books:
+                    books_list.append(
+                        {
+                            "book_id": book.book_id,
+                            "book_title": book.book_title,
+                            "author_name": book.author.author_name
+                            if book.author
+                            else None,
+                        }
+                    )
+                return books_list
+            except Exception as e:
+                print(f"Error in search_books_by_title_for_user: {e}")
+                return []
+
+    @staticmethod
+    async def get_sale_genre(genre):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    Book.book_id,
+                    Book.book_title,
+                    Book.book_on_sale,
+                    Book.sale_value,
+                    func.avg(Review.review_rating).label("book_rating"),
+                )
+                .where(
+                    and_(
+                        Book.book_genre == genre, Book.book_on_sale, Book.book_in_stock
+                    )
+                )
+                .outerjoin(Review)
+                .group_by(Book.book_id, Book.book_title)
+                .order_by(Book.sale_value.desc(), Book.book_title)
+            )
+            return result.mappings().all()
+
 
 class SaleQueries:
     @staticmethod
@@ -683,25 +870,6 @@ class SaleQueries:
             await session.execute(stmt)
             await session.commit()
             return True
-
-    @staticmethod
-    async def get_sale_genre(genre):
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(
-                    Book.book_id,
-                    Book.book_title,
-                    Book.sale_value,
-                    func.avg(Review.review_rating).label("book_rating"),
-                )
-                .where(
-                    and_(Book.book_genre == genre, Book.book_on_sale, Review.published)
-                )
-                .outerjoin(Review)
-                .group_by(Book.book_id)
-                .order_by(Book.sale_value.desc())
-            )
-            return result.mappings().all()
 
 
 class UserQueries:

@@ -47,6 +47,7 @@ from utils.states import (
     AdminChangeAuthorInExistingBook,
     AdminInitiatedAppeal,
     AdminSetSale,
+    AdminSearchBook,
 )
 from models import AppealStatus, AdminPermission, OrderStatus, AdminRole
 import asyncio
@@ -3452,7 +3453,141 @@ async def cancel_book_sale(
         print(f"Error cancel_book_sale: {e}")
 
 
+@admin_router.callback_query(F.data == "admin_search_book")
+@admin_required
+async def admin_search_book(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        await callback.message.edit_text(
+            text="Выберите способ поиска книги",
+            reply_markup=await KbAdmin.choose_search_method(),
+        )
+        await callback.answer()
+    except Exception as e:
+        print(f"Error admin_search_book: {e}")
+
+
+@admin_router.callback_query(F.data.startswith("search_book_by_"))
+@admin_required
+async def search_book_by(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        method = str(callback.data.split("_")[-1])
+        if method == "name":
+            main_message = await callback.message.edit_text(
+                text="Введите название книги для поиска:",
+                reply_markup=await KbAdmin.back_from_book_search(),
+            )
+            await state.set_state(AdminSearchBook.waiting_for_book_name_for_search)
+            await state.update_data(
+                main_message_id=main_message.message_id,
+                chat_id=callback.message.chat.id,
+            )
+            await callback.answer()
+        elif method == "notinstock":
+            books = await BookQueries.get_books_not_in_stock()
+            if not books:
+                await callback.answer(
+                    text="📦 Все книги в наличии!",
+                )
+                return
+            if len(books) == 50:
+                results_text = (
+                    "📦 Найдено 50+ книг, которых нет в наличии:\n\nВыберите книгу:"
+                )
+            else:
+                results_text = f"📦 Найдено {len(books)} книг, которых нет в наличии:\n\nВыберите книгу:"
+            await callback.message.edit_text(
+                text=results_text,
+                reply_markup=await KbAdmin.books_search_results_out_of_stock(books),
+            )
+            await state.update_data(
+                search_results=books, search_type="not_in_stock", current_page=0
+            )
+            await callback.answer()
+    except Exception as e:
+        print(f"Error search_book_by_name: {e}")
+
+
 # FMScontext hnd
+
+
+@admin_router.message(AdminSearchBook.waiting_for_book_name_for_search, F.text)
+@admin_required
+async def AdminSearchBook_waiting_for_book_name_for_search(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    is_admin: bool,
+    admin_permissions: int,
+    admin_name: str,
+):
+    try:
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        search_query = message.text.strip()
+        if len(search_query) < 2:
+            error_msg = await message.answer(
+                "❌ Запрос должен содержать минимум 2 символа"
+            )
+            await asyncio.sleep(2)
+            await error_msg.delete()
+            data = await state.get_data()
+            main_message_id = data.get("main_message_id")
+            chat_id = data.get("chat_id")
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=main_message_id,
+                text="Введите название книги для поиска:",
+                reply_markup=await KbAdmin.back_from_book_search(),
+            )
+            return
+        data = await state.get_data()
+        main_message_id = data.get("main_message_id")
+        chat_id = data.get("chat_id")
+        books = await BookQueries.search_books_by_title(search_query)
+        if not books:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=main_message_id,
+                text=f"🔍 По запросу '{search_query}' ничего не найдено.\n\nПопробуйте другой запрос:",
+                reply_markup=await KbAdmin.back_from_book_search(),
+            )
+            return
+        if len(books) == 20:
+            results_text = (
+                f"🔍 Найдено 20+ книг по запросу: '{search_query}'\n\nВыберите книгу:"
+            )
+        else:
+            results_text = f"🔍 Найдено {len(books)} книг по запросу: '{search_query}'\n\nВыберите книгу:"
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=main_message_id,
+            text=results_text,
+            reply_markup=await KbAdmin.books_search_results(books),
+        )
+        await state.update_data(
+            search_results=books, search_query=search_query, current_page=0
+        )
+    except Exception as e:
+        print(f"Error in AdminSearchBook_waiting_for_book_name_for_search: {e}")
+        error_msg = await message.answer("❌ Произошла ошибка при поиске")
+        await asyncio.sleep(2)
+        await error_msg.delete()
 
 
 @admin_router.message(AdminSetSale.waiting_for_sale_amount, F.text)

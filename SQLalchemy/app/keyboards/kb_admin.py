@@ -3,7 +3,7 @@ from utils.admin_utils import PermissionChecker
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from models import AdminPermission, AppealStatus, OrderStatus, BookGenre
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, List
 
 status_dict = {
     AppealStatus.IN_WORK: "🔧 В работе",
@@ -693,6 +693,112 @@ class KbAdmin:
                 [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")],
             ]
         )
+
+    @staticmethod
+    async def choose_search_method() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔍 Поиск по названию", callback_data="search_book_by_name"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="📋 Книги которых нет в наличие",
+                        callback_data="search_book_by_notinstock",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data="admin_main_control_books"
+                    ),
+                ],
+            ]
+        )
+
+    @staticmethod
+    async def back_from_book_search() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data="admin_search_book"
+                    )
+                ]
+            ]
+        )
+
+    @staticmethod
+    async def back_to_search_menu() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔍 Назад к поиску", callback_data="admin_search_book"
+                    ),
+                    InlineKeyboardButton(
+                        text="📋 К меню книг", callback_data="admin_main_control_books"
+                    ),
+                ]
+            ]
+        )
+
+    @staticmethod
+    async def books_search_results_out_of_stock(
+        books: List[Dict],
+    ) -> InlineKeyboardMarkup:
+        inline_keyboard = []
+        for book in books:
+            button_text = f"📖 {book['book_title']}"
+            if book.get("author_name"):
+                button_text = f"📖 {book['book_title']} - {book['author_name']}"
+            if book.get("book_in_stock") is False or book.get("book_quantity", 0) <= 0:
+                if len(button_text) > 35:
+                    button_text = button_text[:32] + "..."
+                button_text = f"🚫 {button_text}"
+            else:
+                if len(button_text) > 40:
+                    button_text = button_text[:37] + "..."
+            inline_keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=button_text, callback_data=f"book_{book['book_id']}"
+                    )
+                ]
+            )
+        inline_keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад", callback_data="admin_search_book"
+                ),
+                InlineKeyboardButton(
+                    text="📋 К списку книг", callback_data="admin_main_control_books"
+                ),
+            ]
+        )
+        return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+    @staticmethod
+    async def books_search_results(books: List[Dict]) -> InlineKeyboardMarkup:
+        inline_keyboard = []
+        for book in books:
+            button_text = f"📖 {book['book_title']}"
+            if book.get("author_name"):
+                button_text = f"📖 {book['book_title']} - {book['author_name']}"
+            if len(button_text) > 40:
+                button_text = button_text[:37] + "..."
+            inline_keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=button_text, callback_data=f"book_{book['book_id']}"
+                    )
+                ]
+            )
+        inline_keyboard.append(
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_search_book")]
+        )
+        return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
     @staticmethod
     async def choose_author_for_new_book(
