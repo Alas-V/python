@@ -30,7 +30,7 @@ import math
 from typing import Optional
 from authors import REAL_AUTHORS
 from books import REAL_BOOKS
-
+from review_generator_simple import generate_reviews
 
 fake = Faker("ru_RU")
 
@@ -797,7 +797,7 @@ class BookQueries:
                         and_(
                             Book.book_title.ilike(f"%{title_query}%"),
                             Book.book_in_stock == True,
-                            Book.book_status == BookStatus.APPROVED,
+                            Book.book_status == BookStatus.IN_STOCK,
                         )
                     )
                     .order_by(Book.book_title)
@@ -2856,19 +2856,19 @@ class DBData:
             await session.commit()
 
             # Создаем дополнительных пользователей
-            users = []
-            for _ in range(25):
-                user = User(
-                    username=fake.user_name()[:30],
-                    user_first_name=fake.name()[:30],
-                    telegram_id=random.randint(38712, 129312239),
-                )
-                cart = Cart(telegram_id=user.telegram_id)
-                user.cart = cart
-                users.append(user)
-                session.add(user)
+            # users = []
+            # for _ in range(25):
+            #     user = User(
+            #         username=fake.user_name()[:30],
+            #         user_first_name=fake.name()[:30],
+            #         telegram_id=random.randint(38712, 129312239),
+            #     )
+            #     cart = Cart(telegram_id=user.telegram_id)
+            #     user.cart = cart
+            #     users.append(user)
+            # #     session.add(user)
 
-            await session.flush()
+            # await session.flush()
 
             # # Создаем отзывы
             # book_ids = [book.book_id for book in books]
@@ -2925,6 +2925,7 @@ class DBData:
                 is_complete=True,
             )
             session.add(address)
+            await generate_reviews(session)
 
             # # Получаем всех пользователей и админов
             # all_users_result = await session.execute(select(User))

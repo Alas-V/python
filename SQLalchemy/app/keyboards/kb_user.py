@@ -9,7 +9,7 @@ class UserKeyboards:
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="🔥 Товары со скидкой 🔥", callback_data="show_genre_on_sale"
+                    text="🔥 Товары со скидкой 🔥", callback_data="sale_menu"
                 )
             ],
             [
@@ -43,7 +43,8 @@ class UserKeyboards:
                     InlineKeyboardButton(
                         text="🔎 Поиск по названию книги", callback_data="search_book"
                     )
-                ][
+                ],
+                [
                     InlineKeyboardButton(text="✒️Поэзия", callback_data="genre_poetry"),
                     InlineKeyboardButton(
                         text="🎭Классическая литература", callback_data="genre_classic"
@@ -127,17 +128,27 @@ class UserKeyboards:
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod
-    async def sale_books_by_genre_keyboard(
-        books: list[dict],
-    ) -> InlineKeyboardMarkup:
+    async def sale_books_by_genre_keyboard(books: List[Dict]) -> InlineKeyboardMarkup:
         keyboard = []
         for book in books:
-            button_text = f"🔥-{int(100 * book['sale_value'])}％🔥 - {book['book_title']} - {round(book['book_rating'], 2)}⭐"
+            sale_value = book.get("sale_value", 0)
+            rating = book.get("book_rating")
+            title = book.get("book_title", "Без названия")
+            button_text = title
+            if sale_value and sale_value > 0:
+                sale_percent = int(100 * sale_value)
+                button_text = f"🔥-{sale_percent}％🔥 {button_text}"
+            if rating is not None:
+                rating_rounded = round(rating, 1)
+                button_text = f"{button_text} - {rating_rounded}⭐"
+            else:
+                button_text = f"{button_text} - Нет оценок"
+            if len(button_text) > 40:
+                button_text = button_text[:37] + "..."
             keyboard.append(
                 [
                     InlineKeyboardButton(
-                        text=button_text,
-                        callback_data=f"book_{book['book_id']}",
+                        text=button_text, callback_data=f"book_{book.get('book_id')}"
                     )
                 ]
             )

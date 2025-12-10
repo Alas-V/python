@@ -72,7 +72,7 @@ async def cmd_start(message: Message, state: FSMContext):
     last_hint_id = data.get("last_hint_id")
     photo_message_id = data.get("photo_message_id", [])
     if messages_to_delete:
-        await delete_messages(message.bot, message.chat.id, messages_to_delete)
+        await delete_messages(message.bot, message.chat.id, [messages_to_delete])
     if last_hint_id:
         try:
             await message.bot.delete_message(
@@ -118,10 +118,6 @@ async def menu(callback: CallbackQuery, state: FSMContext):
         await delete_messages(
             callback.message.bot, callback.message.chat.id, messages_to_delete
         )
-    if messages_to_delete:
-        await delete_messages(
-            callback.message.bot, callback.message.chat.id, messages_to_delete
-        )
     if last_hint_id:
         try:
             await callback.message.bot.delete_message(
@@ -145,7 +141,7 @@ async def menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Возвращение в Меню")
     if photo_message_id:
         bot = callback.message.bot
-        await delete_messages(bot, callback.message.chat.id, [photo_message_id])
+        await delete_messages(bot, callback.message.chat.id, photo_message_id)
         await callback.message.answer(
             text, reply_markup=await UserKeyboards.main_menu(is_admin)
         )
@@ -165,7 +161,10 @@ async def information(callback: CallbackQuery):
 
 
 @user_router.callback_query(F.data == "catalog")
-async def genre_search(callback: CallbackQuery):
+async def genre_search(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if data:
+        await state.clear()
     await callback.answer("")
     await callback.message.edit_text(
         "Выберите жанр для поиска:", reply_markup=await UserKeyboards.show_genre()
@@ -321,7 +320,7 @@ async def sale_genre(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     photo_message_id = data.get("photo_message_id", [])
     genres = callback.data.split("_")[1]
-    books = await SaleQueries.get_sale_genre(genres)
+    books = await BookQueries.get_sale_genre(genres)
     if not books:
         await callback.answer("Книг этого жанра не найдено")
         return
@@ -373,40 +372,64 @@ async def classic_show_books(callback: CallbackQuery, state: FSMContext):
 
 @user_router.callback_query(F.data.startswith("book_"))
 async def book_details(callback: CallbackQuery, state: FSMContext):
-    book_id = int(callback.data.split("_")[1])
-    data = await state.get_data()
-    last_hint_id = data.get("last_hint_id", [])
-    if last_hint_id:
-        bot = callback.message.bot
-        await delete_messages(bot, callback.message.chat.id, [last_hint_id])
-    book_data = await BookQueries.get_book_info(book_id)
-    if not book_data:
-        await callback.answer(
-            "Не удалось найти книгу. Повторите попытку позже", show_alert=True
-        )
-        return
-    if book_data.get("book_on_sale"):
-        text = await get_book_details_on_sale(book_data)
-    else:
-        text = await get_book_details(book_data)
-    genre_in_text = GENRES[book_data["book_genre"]]
-    book_cover = await BookQueries.has_cover(book_id)
-    if book_cover:
-        try:
-            main_message_id = data.get("main_message_id", [])
+    try:
+        book_id = int(callback.data.split("_")[1])
+        data = await state.get_data()
+        telegram_id = int(callback.from_user.id)
+        last_hint_id = data.get("last_hint_id", [])
+        if last_hint_id:
             bot = callback.message.bot
-            telegram_id = int(callback.from_user.id)
-            admin = await AdminQueries.is_user_admin(telegram_id)
-            if admin:
-                can_manage_book_data = PermissionChecker.has_permission(
-                    admin.permissions, AdminPermission.MANAGE_BOOKS
+            await delete_messages(bot, callback.message.chat.id, [last_hint_id])
+        book_data = await BookQueries.get_book_info(book_id)
+        if not book_data:
+            await callback.answer(
+                "Не удалось найти книгу. Повторите попытку позже", show_alert=True
+            )
+            return
+        if book_data.get("book_on_sale"):
+            text = await get_book_details_on_sale(book_data)
+        else:
+            text = await get_book_details(book_data)
+        genre_in_text = GENRES.get(book_data["book_genre"], book_data["book_genre"])
+        book_cover = await BookQueries.has_cover(book_id)
+        admin = await AdminQueries.is_user_admin(telegram_id)
+        if admin:
+            can_manage_book_data = PermissionChecker.has_permission(
+                admin.permissions, AdminPermission.MANAGE_BOOKS
+            )
+        else:
+            can_manage_book_data = False
+        main_message_id = data.get("main_message_id", [])
+        if main_message_id:
+            try:
+                bot = callback.message.bot
+                await delete_messages(bot, callback.message.chat.id, [main_message_id])
+            except Exception:
+                pass
+        await state.update_data(photo_message_id=None)
+        if book_cover:
+            try:
+                photo_message = await callback.message.answer_photo(
+                    photo=book_cover,
+                    caption=text,
+                    reply_markup=await UserKeyboards.book_details(
+                        book_data["book_id"],
+                        book_data["book_genre"],
+                        book_data["book_on_sale"],
+                        genre_in_text,
+                        can_manage_book_data,
+                    ),
+                    parse_mode="HTML",
                 )
-            else:
-                can_manage_book_data = False
-            await delete_messages(bot, callback.message.chat.id, [main_message_id])
-            photo_message = await callback.message.answer_photo(
-                photo=book_cover,
-                caption=text,
+                await state.update_data(photo_message_id=photo_message.message_id)
+                await callback.answer()
+                return
+            except Exception as e:
+                print(f"Ошибка при отправке фото: {e}")
+                book_cover = None
+        try:
+            main_message = await callback.message.edit_text(
+                text,
                 reply_markup=await UserKeyboards.book_details(
                     book_data["book_id"],
                     book_data["book_genre"],
@@ -416,48 +439,26 @@ async def book_details(callback: CallbackQuery, state: FSMContext):
                 ),
                 parse_mode="HTML",
             )
-            await state.update_data(photo_message_id=photo_message.message_id)
-            return
+            await state.update_data(main_message_id=main_message.message_id)
         except Exception as e:
-            print(f"Ошибка при отправке фото: {e}")
-            await callback.answer(text="Произошла ошибка при загрузке обложки")
-    try:
-        admin = await AdminQueries.is_user_admin(telegram_id)
-        if admin:
-            can_manage_book_data = PermissionChecker.has_permission(
-                admin.permissions, AdminPermission.MANAGE_BOOKS
+            print(f"Ошибка при редактировании сообщения: {e}")
+            main_message = await callback.message.answer(
+                text,
+                reply_markup=await UserKeyboards.book_details(
+                    book_data["book_id"],
+                    book_data["book_genre"],
+                    book_data["book_on_sale"],
+                    genre_in_text,
+                    can_manage_book_data,
+                ),
+                parse_mode="HTML",
             )
-        else:
-            can_manage_book_data = False
-        await callback.message.edit_text(
-            text,
-            reply_markup=await UserKeyboards.book_details(
-                book_data["book_id"],
-                book_data["book_genre"],
-                book_data["book_on_sale"],
-                genre_in_text,
-                can_manage_book_data,
-            ),
-            parse_mode="HTML",
-        )
-    except TelegramBadRequest:
-        admin = await AdminQueries.is_user_admin(telegram_id)
-        if admin:
-            can_manage_book_data = PermissionChecker.has_permission(
-                admin.permissions, AdminPermission.MANAGE_BOOKS
-            )
-        else:
-            can_manage_book_data = False
-        await callback.message.answer(
-            text,
-            reply_markup=await UserKeyboards.book_details(
-                book_data["book_id"],
-                book_data["book_genre"],
-                book_data["book_on_sale"],
-                genre_in_text,
-                can_manage_book_data,
-            ),
-            parse_mode="HTML",
+            await state.update_data(main_message_id=main_message.message_id)
+        await callback.answer()
+    except Exception as e:
+        print(f"Ошибка в book_details: {e}")
+        await callback.answer(
+            "❌ Произошла ошибка при загрузке данных о книге", show_alert=True
         )
 
 
@@ -569,17 +570,20 @@ async def full_review(callback: CallbackQuery):
         reply_markup=await UserKeyboards.kb_in_review(own_review, review_id, book_id),
         parse_mode="Markdown",
     )
+    await callback.answer()
 
 
 @user_router.callback_query(F.data == "search_book")
 async def search_book_start(callback: CallbackQuery, state: FSMContext):
     try:
-        await callback.message.edit_text(
+        main_message = await callback.message.edit_text(
             text="🔍 Введите название книги для поиска:",
             reply_markup=await UserKeyboards.back_from_search(),
         )
         await state.set_state(UserSearchBook.waiting_for_book_name)
-        await state.update_data(chat_id=callback.message.chat.id)
+        await state.update_data(
+            chat_id=callback.message.chat.id, main_message_id=main_message.message_id
+        )
         await callback.answer()
     except Exception as e:
         print(f"Error search_book_start: {e}")
@@ -592,23 +596,42 @@ async def search_book_start(callback: CallbackQuery, state: FSMContext):
 @user_router.message(UserSearchBook.waiting_for_book_name, F.text)
 async def user_search_book_handler(message: Message, state: FSMContext, bot: Bot):
     try:
+        data = await state.get_data()
+        main_message_id = data.get("main_message_id")
         try:
             await message.delete()
         except Exception:
             pass
         search_query = message.text.strip()
+        if "%" in search_query or "_" in search_query:
+            error_msg = await bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=main_message_id,
+                text="❌ Введите корректные данные, для поиска книги по названию.",
+                reply_markup=await UserKeyboards.back_from_search(),
+            )
+            await state.set_state(UserSearchBook.waiting_for_book_name)
+            await state.update_data(main_message_id=error_msg.message_id)
         if len(search_query) < 2:
-            error_msg = await message.answer("❌ Введите минимум 2 символа")
-            await asyncio.sleep(2)
-            await error_msg.delete()
+            error_msg = await bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=main_message_id,
+                text="❌ Введите минимум 2 символа. Отправьте название для поиска еще раз",
+                reply_markup=await UserKeyboards.back_from_search(),
+            )
+            await state.set_state(UserSearchBook.waiting_for_book_name)
+            await state.update_data(main_message_id=error_msg.message_id)
             return
         books = await BookQueries.search_books_by_title_for_user(search_query)
         if not books:
-            await message.answer(
-                f"🔍 По запросу '{search_query}' ничего не найдено.\n\nПопробуйте другой запрос:",
-                reply_markup=await UserKeyboards.in_book_search(),
+            main_message = await bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=main_message_id,
+                text=f"🔍 По запросу '{search_query}' ничего не найдено.\n\nПопробуйте другой запрос:",
+                reply_markup=await UserKeyboards.back_from_search(),
             )
-            await state.clear()
+            await state.set_state(UserSearchBook.waiting_for_book_name)
+            await state.update_data(main_message_id=main_message.message_id)
             return
         if len(books) == 20:
             results_text = (
@@ -616,11 +639,15 @@ async def user_search_book_handler(message: Message, state: FSMContext, bot: Bot
             )
         else:
             results_text = f"🔍 По запросу '{search_query}' найдено {len(books)} книг:\n\nВыберите книгу:"
-        await message.answer(
+        main_message = await bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=main_message_id,
             text=results_text,
             reply_markup=await UserKeyboards.user_search_results_keyboard(books),
         )
-        await state.clear()
+        await state.set_state(UserSearchBook.loading_book)
+        await state.update_data(main_message_id=main_message.message_id)
+        return
     except Exception as e:
         print(f"Error in user_search_book_handler: {e}")
         await message.answer("❌ Ошибка при поиске")

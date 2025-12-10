@@ -5250,16 +5250,9 @@ async def AdminChangeAuthorInExistingBook_waiting_for_author_country(
         await AuthorQueries.add_data_to_column(
             author_id=new_author_id, value=author_country, column="author_country"
         )
-        print(f"{new_author_id}, {author_country} / 1")
         author_data = await AuthorQueries.get_author_data(new_author_id)
-        print(f"{new_author_id}, {author_data} / 2")
         author_complete = await AuthorQueries.check_author_completion(new_author_id)
-        print(f"{new_author_id}, {author_complete} / 3")
         message_text = await author_details_for_adding(author_data)
-        print(f"{message_text} / 4")
-        print(
-            f"{chat_id},{main_message_id},{new_author_id},{old_author_id},{author_complete} / 5"
-        )
         main_message = await bot.edit_message_text(
             text=message_text,
             chat_id=chat_id,

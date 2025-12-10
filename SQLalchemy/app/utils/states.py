@@ -97,3 +97,4 @@ class AdminSearchBook(StatesGroup):
 
 class UserSearchBook(StatesGroup):
     waiting_for_book_name = State()
+    loading_book = State()
