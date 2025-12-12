@@ -2,6 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
 TOKEN = "8205935139:AAGbVZYlX_feEfkvCsH-jIAJxPZDmZmYgsk"
+PAYMENT_TOKEN = "1744374395:TEST:8e393a88736f9a72157a"
+
 
 ADMIN_ID = 717149416
 

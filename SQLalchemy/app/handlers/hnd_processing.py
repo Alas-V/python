@@ -1,4 +1,4 @@
-from aiogram import Bot, Router, F
+from aiogram import Bot, Router, F, types
 from aiogram.types import Message, CallbackQuery
 from utils.states import OrderForm
 from aiogram.fsm.context import FSMContext
@@ -6,11 +6,22 @@ from queries.orm import OrderQueries, UserQueries, BookQueries, AdminQueries
 from text_templates import order_data_structure, text_address_data
 from keyboards.kb_order import OrderProcessing
 from keyboards.kb_admin import KbAdmin
-from config import ADMIN_ID
+from config import PAYMENT_TOKEN
 import asyncio
 from models import AdminPermission
+from aiogram.types.message import ContentType
+import logging
+import asyncio
+import time
+from aiogram.types import LabeledPrice, PreCheckoutQuery
+from aiogram.filters import StateFilter
+from aiogram.enums import ContentType
+
+pending_payments = {}
 
 processing = Router()
+
+payment_logger = logging.getLogger("payment")
 
 
 async def delete_messages(bot, chat_id: int, message_ids: list):
@@ -303,12 +314,197 @@ async def done_address(callback: CallbackQuery, state: FSMContext):
         )
     else:
         text += f"\n❗На балансе недостаточно({-remainder}₽) средств для покупки"
-        await callback.message.edit_text(
+        main_message = await callback.message.edit_text(
             text,
             reply_markup=await OrderProcessing.kb_confirm_order(
                 remainder,
                 address_id,
             ),
+        )
+        await state.update_data(
+            remainder=-remainder,
+            main_message_id=main_message.message_id,
+            list_of_books=list_of_books,
+            telegram_id=telegram_id,
+            address_id=address_id,
+            username=callback.from_user.username,
+        )
+
+
+@processing.callback_query(F.data.startswith("replenish_balance_"))
+async def replenish_balance(callback: CallbackQuery, bot: Bot, state: FSMContext):
+    address_id = int(callback.data.split("_")[-1])
+    data = await state.get_data()
+    remainder = data.get("remainder")
+    main_message_id = data.get("main_message_id")
+    list_of_books = data.get("list_of_books")
+    telegram_id = data.get("telegram_id")
+    user_balance = await UserQueries.get_user_balance(telegram_id)
+    balance = int(user_balance)
+    total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
+    price = int(total_price)
+    remainder = balance - price
+    if main_message_id:
+        try:
+            await delete_messages(
+                bot=bot, chat_id=callback.message.chat.id, message_ids=[main_message_id]
+            )
+        except Exception as e:
+            print(f"error in replenish_balance : {e}")
+    payment_id = f"pay_{telegram_id}_{int(time.time())}"
+    pending_payments[payment_id] = {
+        "user_id": telegram_id,
+        "address_id": address_id,
+        "created_at": time.time(),
+        "status": "pending",
+    }
+    invoice = await bot.send_invoice(
+        chat_id=callback.message.chat.id,
+        title="Покупка в магазине Book_bot",
+        description="".join(list_of_books) if list_of_books else "Пополнение баланса",
+        provider_token=PAYMENT_TOKEN,
+        currency="rub",
+        is_flexible=False,
+        prices=[LabeledPrice(label="Пополнение баланса", amount=int(-remainder * 100))],
+        payload=payment_id,
+        photo_url="https://thumbs.dreamstime.com/b/%D0%BA%D0%BD%D0%B8%D0%B6%D0%BD%D1%8B%D0%B5-%D0%BF%D0%BE%D0%BB%D0%BA%D0%B8-%D0%B4%D1%80%D0%B5%D0%B2%D0%BD%D0%B5%D0%B9-%D0%B2%D0%B5%D0%BD%D1%81%D0%BA%D0%BE%D0%B9-%D0%B1%D0%B8%D0%B1%D0%BB%D0%B8%D0%BE%D1%82%D0%B5%D0%BA%D0%B8-%D0%B0%D0%B2%D1%81%D1%82%D1%80%D0%B8%D1%8F-%D0%B2%D0%B5%D0%BD%D0%B0-%D1%81%D0%B5%D0%BD%D1%82%D1%8F%D0%B1%D1%80%D1%8C-%D0%B3%D0%BE%D0%B4%D0%B0-308270038.jpg",
+        photo_height=450,
+        photo_width=800,
+        photo_size=100000,
+    )
+    await state.update_data(price=-remainder, invoice_message_id=invoice.message_id)
+    asyncio.create_task(
+        cancel_payment_after_timeout(bot, payment_id, telegram_id, invoice.message_id)
+    )
+
+
+async def cancel_payment_after_timeout(
+    bot: Bot, payment_id: str, user_id: int, invoice_message_id: int, timeout: int = 900
+):
+    await asyncio.sleep(timeout)
+    if (
+        payment_id in pending_payments
+        and pending_payments[payment_id]["status"] == "pending"
+    ):
+        pending_payments[payment_id]["status"] = "timeout"
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=invoice_message_id)
+            print(f"Инвойс {invoice_message_id} удален по таймауту")
+        except Exception as e:
+            print(f"Не удалось удалить инвойс при таймауте: {e}")
+        await asyncio.sleep(3600)
+        if payment_id in pending_payments:
+            del pending_payments[payment_id]
+
+
+@processing.pre_checkout_query()
+async def pre_checkout_query_handler(
+    pre_checkout_q: PreCheckoutQuery, state: FSMContext, bot: Bot
+):
+    try:
+        payment_id = pre_checkout_q.invoice_payload
+        if payment_id not in pending_payments:
+            await pre_checkout_q.answer(
+                ok=False, error_message="Платеж устарел. Создайте новый."
+            )
+            return
+        payment_data = pending_payments[payment_id]
+        amount_expected = payment_data.get("amount", 0) * 100
+        if amount_expected == 0:
+            data = await state.get_data()
+            telegram_id = data.get("telegram_id")
+            user_balance = await UserQueries.get_user_balance(telegram_id)
+            total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
+            amount_expected = max(0, total_price - user_balance) * 100
+        if pre_checkout_q.total_amount != amount_expected:
+            await pre_checkout_q.answer(
+                ok=False, error_message="Неверная сумма платежа"
+            )
+            return
+        if pre_checkout_q.currency != "RUB":
+            await pre_checkout_q.answer(ok=False, error_message="Неверная валюта")
+            return
+        data = await state.get_data()
+        telegram_id = data.get("telegram_id")
+        total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
+        all_available, insufficient_books = await BookQueries.check_books_availability(
+            cart_data
+        )
+        if all_available:
+            await pre_checkout_q.answer(ok=True)
+        else:
+            await pre_checkout_q.answer(
+                ok=False,
+                error_message=f"Товары закончились: {', '.join(insufficient_books)}",
+            )
+    except Exception as e:
+        print(f"Error in pre_checkout_query: {e}")
+        await pre_checkout_q.answer(ok=False, error_message="Ошибка проверки")
+
+
+@processing.message(F.content_type == ContentType.SUCCESSFUL_PAYMENT)
+async def successful_payment(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    telegram_id = data.get("telegram_id")
+    address_id = data.get("address_id")
+    username = data.get("username")
+    invoice_message_id = data.get("invoice_message_id")
+    if invoice_message_id:
+        try:
+            await bot.delete_message(
+                chat_id=message.chat.id, message_id=invoice_message_id
+            )
+            print(f"Инвойс {invoice_message_id} удален после оплаты")
+        except Exception as e:
+            print(f"Не удалось удалить инвойс: {e}")
+    total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
+    price = int(total_price)
+    all_available, insufficient_books = await BookQueries.check_books_availability(
+        cart_data
+    )
+    if not all_available:
+        await message.answer(
+            f"❌ Товары закончились: {', '.join(insufficient_books)}\n"
+            f"Свяжитесь с администратором для возврата средств."
+        )
+        return
+    address_data = await OrderQueries.get_user_address_data(telegram_id, address_id)
+    address_dict = dict(address_data._mapping)
+    order_data = {
+        "user_name": address_dict.get("name", "Не указано"),
+        "user_phone": address_dict.get("phone", "Не указан"),
+        "address": await format_address(address_dict),
+        "payment": address_dict.get("payment", "Не указан"),
+        "products": await format_products(cart_data),
+        "total_price": total_price,
+        "comment": address_dict.get("comment", "Нет комментария"),
+        "user_id": telegram_id,
+        "username": username or "Не указан",
+    }
+    payment_amount = message.successful_payment.total_amount / 100
+    await UserQueries.updata_user_balance(telegram_id, payment_amount)
+    await BookQueries.decrease_book_value(cart_data)
+    await UserQueries.updata_user_balance(telegram_id, 0)
+    order_id = await OrderQueries.made_order(telegram_id, address_id, price, cart_data)
+    await send_order_notification(bot, order_data, order_id)
+    await OrderQueries.del_cart(telegram_id)
+    payment_id = message.successful_payment.invoice_payload
+    if payment_id in pending_payments:
+        del pending_payments[payment_id]
+    await message.answer(
+        text=f"🎊 Заказ оформлен! 🎊\nНомер вашего заказа {order_id}\nВ Ближайшее время с вам свяжется менеджер для согласования даты доставки\nСледить за статусом заказа можно в разделе: 📦 Мои заказы",
+        reply_markup=await OrderProcessing.kb_order_last_step(0, True, address_id),
+    )
+
+
+@processing.callback_query(F.data.startswith("cancel_payment_"))
+async def cancel_payment(callback: CallbackQuery, bot: Bot, state: FSMContext):
+    payment_id = callback.data.split("_")[-1]
+    if payment_id in pending_payments:
+        del pending_payments[payment_id]
+        await callback.answer("Платеж отменен", show_alert=True)
+        await callback.message.edit_text(
+            "Платеж был отменен. Вы можете попробовать снова или изменить корзину."
         )
 
 

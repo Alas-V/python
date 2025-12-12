@@ -139,6 +139,9 @@ class KbReview:
                     ],
                 )
             rev_place += 1
+            keyboard.append(
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="my_reviews")]
+            )
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     @staticmethod

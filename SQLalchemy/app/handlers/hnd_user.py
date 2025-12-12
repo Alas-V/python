@@ -116,7 +116,7 @@ async def menu(callback: CallbackQuery, state: FSMContext):
     photo_message_id = data.get("photo_message_id", [])
     if messages_to_delete:
         await delete_messages(
-            callback.message.bot, callback.message.chat.id, messages_to_delete
+            callback.message.bot, callback.message.chat.id, [messages_to_delete]
         )
     if last_hint_id:
         try:
@@ -141,7 +141,7 @@ async def menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Возвращение в Меню")
     if photo_message_id:
         bot = callback.message.bot
-        await delete_messages(bot, callback.message.chat.id, photo_message_id)
+        await delete_messages(bot, callback.message.chat.id, [photo_message_id])
         await callback.message.answer(
             text, reply_markup=await UserKeyboards.main_menu(is_admin)
         )
@@ -555,7 +555,7 @@ async def reviews_first(callback: CallbackQuery, state: FSMContext):
 
 
 @user_router.callback_query(F.data.startswith("review_"))
-async def full_review(callback: CallbackQuery):
+async def full_review(callback: CallbackQuery, state: FSMContext):
     review_id = int(callback.data.split("_")[1])
     book_id = int(callback.data.split("_")[2])
     telegram_id = int(callback.from_user.id)
@@ -565,11 +565,12 @@ async def full_review(callback: CallbackQuery):
     else:
         own_review = False
     text = await get_full_review(review_data)
-    await callback.message.edit_text(
+    photo_message = await callback.message.edit_text(
         text=text,
         reply_markup=await UserKeyboards.kb_in_review(own_review, review_id, book_id),
         parse_mode="Markdown",
     )
+    await state.update_data(photo_message_id=photo_message.message_id)
     await callback.answer()
 
 

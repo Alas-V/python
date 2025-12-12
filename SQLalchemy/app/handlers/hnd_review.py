@@ -39,7 +39,7 @@ async def start_review(callback: CallbackQuery, state: FSMContext):
     current_state = await state.get_state()
     if current_state:
         data = await state.get_data()
-        last_hint_id = data["last_hint_id"]
+        last_hint_id = data.get("last_hint_id")
         if last_hint_id:
             bot = callback.message.bot
             await delete_messages(bot, callback.message.chat.id, [last_hint_id])

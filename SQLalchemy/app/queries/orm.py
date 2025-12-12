@@ -2783,24 +2783,24 @@ class DBData:
     async def fake_data():
         async with AsyncSessionLocal() as session:
             # Создаем основного пользователя и админа
-            user = User(
-                username="@sentrybuster",
-                user_first_name="Artem",
-                telegram_id=717149416,
-            )
-            cart = Cart(telegram_id=user.telegram_id)
-            user.cart = cart
-            session.add_all([user, cart])
+            # user = User(
+            #     username="@sentrybuster",
+            #     user_first_name="Artem",
+            #     telegram_id=717149416,
+            # )
+            # cart = Cart(telegram_id=user.telegram_id)
+            # user.cart = cart
+            # session.add_all([user, cart])
 
-            admin = Admin(
-                telegram_id=717149416,
-                name="Артём",
-                permissions=AdminPermission.SUPER_ADMIN_PERMS,
-                role_name="super_admin",
-            )
-            session.add(admin)
-            await session.flush()
-            await session.commit()
+            # admin = Admin(
+            #     telegram_id=717149416,
+            #     name="Артём",
+            #     permissions=AdminPermission.SUPER_ADMIN_PERMS,
+            #     role_name="super_admin",
+            # )
+            # session.add(admin)
+            # await session.flush()
+            # await session.commit()
 
             # # Создаем авторов
             # authors = [
@@ -2856,19 +2856,19 @@ class DBData:
             await session.commit()
 
             # Создаем дополнительных пользователей
-            # users = []
-            # for _ in range(25):
-            #     user = User(
-            #         username=fake.user_name()[:30],
-            #         user_first_name=fake.name()[:30],
-            #         telegram_id=random.randint(38712, 129312239),
-            #     )
-            #     cart = Cart(telegram_id=user.telegram_id)
-            #     user.cart = cart
-            #     users.append(user)
-            # #     session.add(user)
+            users = []
+            for _ in range(25):
+                user = User(
+                    username=fake.user_name()[:30],
+                    user_first_name=fake.name()[:30],
+                    telegram_id=random.randint(38712, 129312239),
+                )
+                cart = Cart(telegram_id=user.telegram_id)
+                user.cart = cart
+                users.append(user)
+                session.add(user)
 
-            # await session.flush()
+            await session.flush()
 
             # # Создаем отзывы
             # book_ids = [book.book_id for book in books]
@@ -2913,18 +2913,18 @@ class DBData:
             #     price=1000,
             # )
             # session.add(cart_item)
-            address = UserAddress(
-                address_id=1,
-                telegram_id=717149416,
-                name="Артём",
-                phone="89139999957",
-                city="Москва",
-                street="Бронный переулок",
-                house="1",
-                apartment="234",
-                is_complete=True,
-            )
-            session.add(address)
+            # address = UserAddress(
+            #     address_id=1,
+            #     telegram_id=717149416,
+            #     name="Артём",
+            #     phone="89139999957",
+            #     city="Москва",
+            #     street="Бронный переулок",
+            #     house="1",
+            #     apartment="234",
+            #     is_complete=True,
+            # )
+            # session.add(address)
             await generate_reviews(session)
 
             # # Получаем всех пользователей и админов

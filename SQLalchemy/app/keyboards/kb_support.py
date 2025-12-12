@@ -84,7 +84,7 @@ class SupportKeyboards:
                 ]
             )
         keyboard.append(
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_menu")]
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
         )
 
         return InlineKeyboardMarkup(inline_keyboard=keyboard)

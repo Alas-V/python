@@ -203,7 +203,7 @@ class User(Base):
     registration_date: Mapped[created_at]
     user_balance: Mapped[Numeric] = mapped_column(
         Numeric(10, 2),
-        default=50000,
+        default=0,
     )
     reviews: Mapped[List["Review"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
