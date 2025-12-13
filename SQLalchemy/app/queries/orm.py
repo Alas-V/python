@@ -1457,8 +1457,8 @@ class OrderQueries:
                     UserAddress.street,
                     UserAddress.house,
                     UserAddress.apartment,
-                    UserAddress.comment,
                     UserAddress.is_complete,
+                    UserAddress.comment,
                 ).where(
                     and_(
                         UserAddress.telegram_id == telegram_id,
@@ -1506,6 +1506,13 @@ class OrderQueries:
                 return False
             name, phone, city, street, house, current_status = data
             is_complete = all([name, phone, city, street, house])
+            if current_status is False and is_complete:
+                await session.execute(
+                    update(UserAddress)
+                    .where(UserAddress.address_id == address_id)
+                    .values(is_complete=True)
+                )
+                await session.commit()
             return is_complete
 
     @staticmethod

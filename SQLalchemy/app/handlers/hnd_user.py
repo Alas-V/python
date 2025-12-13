@@ -199,7 +199,7 @@ async def check_reviews(callback: CallbackQuery):
         - 📢 Опубликованные отзывы """
         keyboard = await KbReview.kb_type_review()
     elif not has_draft and not has_published:
-        message_text = """📝 У вас пока нет отзывов.\n\nВы можете оставить отзыв на любую купленную книгу"""
+        message_text = """📝 У вас пока нет отзывов.\n\nВы можете оставить отзыв на любую книгу из каталога"""
         keyboard = await KbReview.kb_no_review()
     await callback.message.edit_text(
         text=message_text,

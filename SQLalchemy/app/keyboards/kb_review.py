@@ -104,10 +104,7 @@ class KbReview:
             inline_keyboard=[
                 [InlineKeyboardButton(text="📚Каталог", callback_data="catalog")],
                 [
-                    InlineKeyboardButton(text="🔙 Назад", callback_data="account"),
-                    InlineKeyboardButton(
-                        text="🔙Главное меню", callback_data="main_menu"
-                    ),
+                    InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu"),
                 ],
             ]
         )

@@ -16,6 +16,7 @@ import time
 from aiogram.types import LabeledPrice, PreCheckoutQuery
 from aiogram.filters import StateFilter
 from aiogram.enums import ContentType
+import regex as re
 
 pending_payments = {}
 
@@ -28,12 +29,136 @@ async def delete_messages(bot, chat_id: int, message_ids: list):
     for message_id in message_ids:
         try:
             await bot.delete_message(chat_id=chat_id, message_id=message_id)
-            await asyncio.sleep(0.1)
         except Exception as e:
             if "message to delete not found" not in str(
                 e
             ) and "message can't be deleted" not in str(e):
                 print(f"Ошибка удаления сообщения {message_id}: {e}")
+
+
+async def validate_field(column_name: str, value: str) -> tuple[bool, str, str]:
+    if column_name == "name":
+        if not value:
+            return False, "", "❌ Имя не может быть пустым\n\n📝 Введите имя:"
+        if len(value) < 2:
+            return False, "", "❌ Имя слишком короткое (минимум 2 символа)"
+        if len(value) > 100:
+            return False, "", "❌ Имя слишком длинное (максимум 100 символов)"
+        if not re.match(r"^[\p{L}\s\-\'\.]+$", value, re.UNICODE):
+            return (
+                False,
+                "",
+                "❌ Имя содержит недопустимые символы\n\n✅ Можно использовать буквы любого алфавита, пробелы, дефис, апостроф, точку",
+            )
+        if (
+            len(
+                set(
+                    value.lower()
+                    .replace(" ", "")
+                    .replace("-", "")
+                    .replace("'", "")
+                    .replace(".", "")
+                )
+            )
+            < 2
+        ):
+            return False, "", "❌ Имя выглядит некорректно"
+        value = " ".join(value.split())
+        words = re.split(r"([\s\-\']+)", value)
+        formatted_parts = []
+        for word in words:
+            if word and not word.isspace() and word not in "-'":
+                formatted_parts.append(word.capitalize())
+            else:
+                formatted_parts.append(word)
+        return True, "".join(formatted_parts), ""
+    elif column_name == "phone":
+        if not value:
+            return False, "", "❌ Номер телефона не может быть пустым"
+        phone_digits = "".join(filter(str.isdigit, value))
+        if not phone_digits:
+            return False, "", "❌ Номер телефона должен содержать цифры"
+        if len(phone_digits) < 10 or len(phone_digits) > 15:
+            return (
+                False,
+                "",
+                f"❌ Неверная длина номера. Получено {len(phone_digits)} цифр, должно быть 10-15",
+            )
+        if phone_digits.startswith("8"):
+            phone_digits = "7" + phone_digits[1:]
+            phone_number = "+" + phone_digits
+        elif phone_digits.startswith("7") and not value.startswith("+"):
+            phone_number = "+" + phone_digits
+        elif len(phone_digits) == 10:
+            phone_number = "+7" + phone_digits
+        else:
+            phone_number = value if value.startswith("+") else "+" + phone_digits
+        return True, phone_number, ""
+    elif column_name == "city":
+        if not value:
+            return False, "", "❌ Город не может быть пустым\n\n🏙️ Введите город:"
+        if len(value) < 2:
+            return False, "", "❌ Название города слишком короткое (минимум 2 символа)"
+        if len(value) > 100:
+            return (
+                False,
+                "",
+                "❌ Название города слишком длинное (максимум 100 символов)",
+            )
+        if re.search(r"\d", value):
+            return False, "", "❌ В названии города не должно быть цифр"
+        if not re.match(r"^[\p{L}\s\-\.]+$", value, re.UNICODE):
+            return False, "", "❌ Название города содержит недопустимые символы"
+        formatted_city = " ".join(word.capitalize() for word in value.split())
+        return True, formatted_city, ""
+    elif column_name == "street":
+        if not value:
+            return False, "", "❌ Улица не может быть пустой\n\n🛣️ Введите улицу:"
+        if len(value) < 2:
+            return False, "", "❌ Название улицы слишком короткое (минимум 2 символа)"
+        if len(value) > 100:
+            return (
+                False,
+                "",
+                "❌ Название улицы слишком длинное (максимум 100 символов)",
+            )
+        if re.search(r'[@#$%^&*()_+={}\[\]:;"<>?/~`]', value):
+            return False, "", "❌ Название улицы содержит недопустимые символы"
+        words = value.split()
+        formatted_words = []
+        for word in words:
+            if re.match(r"^[IVXLCDM]+$", word.upper()):
+                formatted_words.append(word.upper())
+            elif re.search(r"\d", word):
+                formatted_words.append(word)
+            else:
+                formatted_words.append(word.capitalize())
+        formatted_street = " ".join(formatted_words)
+        return True, formatted_street, ""
+    elif column_name == "house":
+        if not value:
+            return (
+                False,
+                "",
+                "❌ Номер дома не может быть пустым\n\n🏠 Введите номер дома:",
+            )
+        if len(value) > 20:
+            return False, "", "❌ Номер дома слишком длинный (максимум 20 символов)"
+        if not re.match(r"^\d", value):
+            return False, "", "❌ Номер дома должен начинаться с цифры"
+        if not re.match(r"^[\dа-яА-Яa-zA-Z\/\-\.\s]+$", value):
+            return False, "", "❌ Номер дома содержит недопустимые символы"
+        return True, value, ""
+    elif column_name == "apartment":
+        if not value:
+            return True, None, ""
+        if len(value) > 10:
+            return False, "", "❌ Номер квартиры слишком длинный (максимум 10 символов)"
+        if not re.match(r"^[\dа-яА-Яa-zA-Z]+$", value):
+            return False, "", "❌ Номер квартиры содержит недопустимые символы"
+        return True, value, ""
+    else:
+        return True, value, ""
 
 
 async def format_address(address_data) -> str:
@@ -235,7 +360,7 @@ async def change_details(callback: CallbackQuery, state: FSMContext):
     )
     await state.set_state(OrderForm.editing_field)
     prompts = {
-        "name": "👤 Введите ваше имя:",
+        "name": "👤 Введите имя получателя:",
         "phone": "📞 Введите ваш телефон:",
         "city": "🗺️ Введите город:",
         "street": "🛣️ Введите улицу:",
@@ -313,7 +438,7 @@ async def done_address(callback: CallbackQuery, state: FSMContext):
             ),
         )
     else:
-        text += f"\n❗На балансе недостаточно({-remainder}₽) средств для покупки"
+        text += f"\n❗На балансе недостаточно средств ({-remainder}₽) для покупки"
         main_message = await callback.message.edit_text(
             text,
             reply_markup=await OrderProcessing.kb_confirm_order(
@@ -492,7 +617,7 @@ async def successful_payment(message: Message, state: FSMContext, bot: Bot):
     if payment_id in pending_payments:
         del pending_payments[payment_id]
     await message.answer(
-        text=f"🎊 Заказ оформлен! 🎊\nНомер вашего заказа {order_id}\nВ Ближайшее время с вам свяжется менеджер для согласования даты доставки\nСледить за статусом заказа можно в разделе: 📦 Мои заказы",
+        text=f"🎊 Заказ оформлен! 🎊\n\nНомер вашего заказа {order_id}\n\nВ Ближайшее время с вам свяжется менеджер для согласования даты доставки\n\nСледить за статусом заказа можно в разделе: 📦 Мои заказы",
         reply_markup=await OrderProcessing.kb_order_last_step(0, True, address_id),
     )
 
@@ -504,7 +629,7 @@ async def cancel_payment(callback: CallbackQuery, bot: Bot, state: FSMContext):
         del pending_payments[payment_id]
         await callback.answer("Платеж отменен", show_alert=True)
         await callback.message.edit_text(
-            "Платеж был отменен. Вы можете попробовать снова или изменить корзину."
+            "Платеж был отменен. Вы можете попробовать снова или изменить содержимое корзины."
         )
 
 
@@ -549,7 +674,7 @@ async def new_order_done(callback: CallbackQuery, bot: Bot):
             await OrderQueries.del_cart(telegram_id)
             await wait_msg.delete()
             await callback.message.edit_text(
-                text=f"🎊 Заказ оформлен! 🎊\nНомер вашего заказа {order_id}\nВ Ближайшее время с вам свяжется менеджер для согласования даты доставки\nСледить за статусом заказа можно в разделе: 📦 Мои заказы",
+                text=f"🎊 Заказ оформлен! 🎊\n\nНомер вашего заказа {order_id}\n\nВ Ближайшее время с вам свяжется менеджер для согласования даты доставки\n\nСледить за статусом заказа можно в разделе: 📦 Мои заказы",
                 reply_markup=await OrderProcessing.kb_order_last_step(
                     remainder, all_available, address_id
                 ),
@@ -585,14 +710,66 @@ async def process_editing_field(message: Message, state: FSMContext):
     last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
+    input_data = message.text.strip()
+    error_msg_id = data.get("error_msg_id")
+    messages_to_delete = []
+    if error_msg_id:
+        messages_to_delete.append(error_msg_id)
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            await state.update_data(user_messages=[], error_msg_id=None)
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+    is_valid, formatted_data, error_message = await validate_field(column, input_data)
+    if not is_valid:
+        hints = {
+            "name": "👤 Введите имя получателя:",
+            "phone": "📞 Введите телефон:",
+            "city": "🗺️ Введите город:",
+            "street": "🛣️ Введите улицу:",
+            "house": "🏠 Введите номер дома:",
+            "apartment": "🚪 Введите номер квартиры (или оставьте пустым):",
+        }
+        error_msg = await message.answer(error_message)
+        messages_to_delete = []
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            new_hint = await message.answer(
+                hints.get(column, f"Введите значение для {column}:")
+            )
+            await state.update_data(
+                last_hint_id=new_hint.message_id,
+                user_messages=[],
+                error_msg_id=error_msg.message_id,
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            await state.update_data(
+                user_messages=user_messages, error_msg_id=error_msg.message_id
+            )
+        await state.set_state(OrderForm.editing_field)
+        return
     if last_hint_id:
-        await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
-    formatted_data = message.text.strip()
-    if column in ["name", "city", "street"]:
-        formatted_data = message.text.strip().lower().capitalize()
-    await OrderQueries.update_info(
-        message.from_user.id, address_id, column, formatted_data
-    )
+        try:
+            await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+    try:
+        await OrderQueries.update_info(
+            message.from_user.id, address_id, column, formatted_data
+        )
+    except Exception as e:
+        print(f"Ошибка сохранения {column}: {e}")
+        error_msg = await message.answer("❌ Ошибка сохранения. Попробуйте снова:")
+        await asyncio.sleep(3)
+        await error_msg.delete()
+        return
     is_complete = await OrderQueries.check_address_completion(address_id)
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id
@@ -620,14 +797,142 @@ async def process_name(message: Message, state: FSMContext):
     last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
+    name = message.text.strip()
+    error_msg_id = data.get("error_msg_id")
+    messages_to_delete = []
+    if error_msg_id:
+        messages_to_delete.append(error_msg_id)
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            await state.update_data(user_messages=[], error_msg_id=None)
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="👤 Введите имя получателя:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+    if not name:
+        error_msg = await message.answer(
+            "❌ Имя не может быть пустым\n\n📝 Введите имя:"
+        )
+        await state.set_state(OrderForm.name)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if len(name) < 2:
+        error_msg = await message.answer("❌ Имя слишком короткое (минимум 2 символа)")
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="👤 Введите имя получателя:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="👤 Введите имя получателя:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.name)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if len(name) > 100:
+        error_msg = await message.answer(
+            "❌ Имя слишком длинное (максимум 100 символов)"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="👤 Введите имя получателя:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="👤 Введите имя получателя:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.name)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if not re.match(r"^[\p{L}\s\-\'\.]+$", name, re.UNICODE):
+        error_msg = await message.answer(
+            "❌ Имя содержит недопустимые символы\n\n"
+            "✅ Можно использовать:\n"
+            "• Буквы любого алфавита\n"
+            "• Пробелы\n"
+            "• Дефис (-)\n"
+            "• Апостроф (') \n"
+            "• Точку (.)\n\n"
+            "🚫 Нельзя: цифры, скобки, @, #, $ и другие символы"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="👤 Введите имя получателя:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="👤 Введите имя получателя:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.name)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if (
+        len(
+            set(
+                name.lower()
+                .replace(" ", "")
+                .replace("-", "")
+                .replace("'", "")
+                .replace(".", "")
+            )
+        )
+        < 2
+    ):
+        error_msg = await message.answer("❌ Имя выглядит некорректно")
+        await state.set_state(OrderForm.name)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    name = " ".join(name.split())
+    words = re.split(r"([\s\-\']+)", name)
+    formatted_parts = []
+    for word in words:
+        if word and not word.isspace() and word not in "-'":
+            formatted_parts.append(word.capitalize())
+        else:
+            formatted_parts.append(word)
+    formatted_name = "".join(formatted_parts)
+    try:
+        is_complete = await OrderQueries.update_info(
+            telegram_id=message.from_user.id,
+            address_id=address_id,
+            column="name",
+            data=formatted_name,
+        )
+    except Exception as e:
+        print(f"Ошибка сохранения имени: {e}")
+        error_msg = await message.answer("❌ Ошибка сохранения. Попробуйте снова:")
+        await asyncio.sleep(3)
+        await error_msg.delete()
+        return
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
-    formatted_name = message.text.strip().lower().capitalize()
-    is_complete = await OrderQueries.update_info(
-        telegram_id=message.from_user.id,
-        address_id=address_id,
-        column="name",
-        data=formatted_name,
-    )
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id
     )
@@ -639,8 +944,13 @@ async def process_name(message: Message, state: FSMContext):
         reply_markup=await OrderProcessing.kb_change_details(address_id, is_complete),
         parse_mode="Markdown",
     )
-    temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
-    new_hint = await message.answer("📞 *Введите телефон:*", parse_mode="Markdown")
+    if last_hint_id:
+        try:
+            await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+        except Exception:
+            pass
+    temp_mess = await message.answer("✅ Имя сохранено")
+    new_hint = await message.answer("📞 Введите телефон:")
     await state.set_state(OrderForm.phone)
     await asyncio.sleep(1)
     await temp_mess.delete()
@@ -658,39 +968,71 @@ async def process_phone(message: Message, state: FSMContext):
     last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
-    await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
     phone_number = message.text.strip()
-    error_message = None
-    try:
+    error_msg_id = data.get("error_msg_id")
+    messages_to_delete = []
+    error_message = []
+    if error_msg_id:
+        messages_to_delete.append(error_msg_id)
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            await state.update_data(user_messages=[], error_msg_id=None)
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+    if not phone_number:
+        error_message = "❌ Номер телефона не может быть пустым"
+    else:
         phone_digits = "".join(filter(str.isdigit, phone_number))
         if not phone_digits:
             error_message = "❌ Номер телефона должен содержать цифры"
         else:
             if len(phone_digits) < 10 or len(phone_digits) > 15:
                 error_message = f"❌ Неверная длина номера. Получено {len(phone_digits)} цифр, должно быть 10-15"
-            if phone_digits.startswith("8"):
-                phone_digits = "7" + phone_digits[1:]
-                phone_number = "+" + phone_digits
-            elif phone_digits.startswith("7") and not phone_number.startswith("+"):
-                phone_number = "+" + phone_digits
-    except Exception as e:
-        error_message = f"❌ Ошибка обработки номера: {str(e)}"
+            else:
+                if phone_digits.startswith("8"):
+                    phone_digits = "7" + phone_digits[1:]
+                    phone_number = "+" + phone_digits
+                elif phone_digits.startswith("7") and not phone_number.startswith("+"):
+                    phone_number = "+" + phone_digits
+                if len(phone_digits) == 10:
+                    phone_number = "+7" + phone_digits
     if error_message:
         error_msg = await message.answer(error_message)
-        new_hint = await message.answer(
-            "📞 *Введите номер телефона:*", parse_mode="Markdown"
-        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="📞 Введите ваш телефон:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="📞 Введите ваш телефон:")
+            await state.update_data(last_hint_id=last_hint.message_id)
         await state.set_state(OrderForm.phone)
-        await asyncio.sleep(2)
-        await error_msg.delete()
-        await state.update_data(last_hint_id=new_hint.message_id, user_messages=[])
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
         return
-    is_complete = await OrderQueries.update_info(
-        telegram_id=message.from_user.id,
-        address_id=address_id,
-        column="phone",
-        data=phone_number,
-    )
+    await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
+    try:
+        is_complete = await OrderQueries.update_info(
+            telegram_id=message.from_user.id,
+            address_id=address_id,
+            column="phone",
+            data=phone_number,
+        )
+    except Exception as e:
+        print(f"Ошибка сохранения телефона: {e}")
+        error_msg = await message.answer("❌ Ошибка сохранения. Попробуйте снова:")
+        await asyncio.sleep(3)
+        await error_msg.delete()
+        return
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id
     )
@@ -720,14 +1062,152 @@ async def process_city(message: Message, state: FSMContext):
     last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
+    error_msg_id = data.get("error_msg_id")
+    messages_to_delete = []
+    if error_msg_id:
+        messages_to_delete.append(error_msg_id)
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            await state.update_data(user_messages=[], error_msg_id=None)
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+    city = message.text.strip()
+    if not city:
+        error_msg = await message.answer(
+            "❌ Город не может быть пустым\n\n🏙️ Введите город:"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.city)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if len(city) < 2:
+        error_msg = await message.answer(
+            "❌ Название города слишком короткое (минимум 2 символа)"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.city)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if len(city) > 100:
+        error_msg = await message.answer(
+            "❌ Название города слишком длинное (максимум 100 символов)"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.city)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if re.search(r"\d", city):
+        error_msg = await message.answer(
+            "❌ В названии города не должно быть цифр\n\n"
+            "🏙️ Укажите только название города\n"
+            "📍 Номер дома указывается в следующем шаге"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.city)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if not re.match(r"^[\p{L}\s\-\.]+$", city, re.UNICODE):
+        error_msg = await message.answer(
+            "❌ Название города содержит недопустимые символы\n\n"
+            "✅ Можно использовать:\n"
+            "• Буквы любого алфавита\n"
+            "• Пробелы\n"
+            "• Дефис (-)\n"
+            "• Точку (.)\n\n"
+            "🚫 Нельзя: цифры, апострофы, скобки и другие символы"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🗺️ Введите город:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.city)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
-    formatted_city = message.text.strip().lower().capitalize()
-    is_complete = await OrderQueries.update_info(
-        telegram_id=message.from_user.id,
-        address_id=address_id,
-        column="city",
-        data=formatted_city,
-    )
+    formatted_city = " ".join(word.capitalize() for word in city.split())
+    try:
+        is_complete = await OrderQueries.update_info(
+            telegram_id=message.from_user.id,
+            address_id=address_id,
+            column="city",
+            data=formatted_city,
+        )
+    except Exception as e:
+        print(f"Ошибка сохранения города: {e}")
+        error_msg = await message.answer("❌ Ошибка сохранения. Попробуйте снова:")
+        await asyncio.sleep(3)
+        await error_msg.delete()
+        return
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id
     )
@@ -757,14 +1237,136 @@ async def process_street(message: Message, state: FSMContext):
     last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
+    street = message.text.strip()
+    error_msg_id = data.get("error_msg_id")
+    messages_to_delete = []
+    if error_msg_id:
+        messages_to_delete.append(error_msg_id)
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            await state.update_data(user_messages=[], error_msg_id=None)
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+    if not street:
+        error_msg = await message.answer(
+            "❌ Улица не может быть пустой\n\n🛣️ Введите улицу:"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🛣️ Введите улицу:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🛣️ Введите улицу:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.street)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if len(street) < 2:
+        error_msg = await message.answer(
+            "❌ Название улицы слишком короткое (минимум 2 символа)"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🛣️ Введите улицу:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🛣️ Введите улицу:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.street)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if len(street) > 100:
+        error_msg = await message.answer(
+            "❌ Название улицы слишком длинное (максимум 100 символов)"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🛣️ Введите улицу:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🛣️ Введите улицу:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.street)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if re.search(r'[@#$%^&*()_+={}\[\]:;"<>?/~`]', street):
+        error_msg = await message.answer(
+            "❌ Название улицы содержит недопустимые символы\n\n"
+            "✅ Можно использовать:\n"
+            "• Буквы и цифры\n"
+            "• Пробелы\n"
+            "• Дефис (-), точку (.), запятую (,), апостроф (')\n\n"
+            "🚫 Нельзя: @ # $ % ^ & * и другие спецсимволы"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🛣️ Введите улицу:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🛣️ Введите улицу:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.street)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
-    formatted_street = message.text.strip().lower().capitalize()
-    is_complete = await OrderQueries.update_info(
-        telegram_id=message.from_user.id,
-        address_id=address_id,
-        column="street",
-        data=formatted_street,
-    )
+    words = street.split()
+    formatted_words = []
+    for word in words:
+        if re.match(r"^[IVXLCDM]+$", word.upper()):
+            formatted_words.append(word.upper())
+        elif re.search(r"\d", word):
+            formatted_words.append(word)
+        else:
+            formatted_words.append(word.capitalize())
+    formatted_street = " ".join(formatted_words)
+    try:
+        is_complete = await OrderQueries.update_info(
+            telegram_id=message.from_user.id,
+            address_id=address_id,
+            column="street",
+            data=formatted_street,
+        )
+    except Exception as e:
+        print(f"Ошибка сохранения улицы: {e}")
+        error_msg = await message.answer("❌ Ошибка сохранения. Попробуйте снова:")
+        await asyncio.sleep(3)
+        await error_msg.delete()
+        return
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id
     )
@@ -776,7 +1378,10 @@ async def process_street(message: Message, state: FSMContext):
         reply_markup=await OrderProcessing.kb_change_details(address_id, is_complete),
     )
     temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
-    new_hint = await message.answer("🏠 *Введите Номер дома:*", parse_mode="Markdown")
+    new_hint = await message.answer(
+        "🏠 *Введите Номер дома:*",
+        parse_mode="Markdown",
+    )
     await state.set_state(OrderForm.house)
     await asyncio.sleep(1)
     await temp_mess.delete()
@@ -794,13 +1399,132 @@ async def process_house(message: Message, state: FSMContext):
     last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
+    house = message.text.strip()
+    error_msg_id = data.get("error_msg_id")
+    error_msg_id = data.get("error_msg_id")
+    messages_to_delete = []
+    if error_msg_id:
+        messages_to_delete.append(error_msg_id)
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            await state.update_data(user_messages=[], error_msg_id=None)
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+    if not house:
+        error_msg = await message.answer(
+            "❌ Номер дома не может быть пустым\n\n🏠 Введите номер дома:"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🏠 Введите номер дома:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🏠 Введите номер дома:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.house)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if len(house) > 20:
+        error_msg = await message.answer(
+            "❌ Номер дома слишком длинный (максимум 20 символов)"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🏠 Введите номер дома:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🏠 Введите номер дома:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.house)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if not re.match(r"^\d", house):
+        error_msg = await message.answer(
+            "❌ Номер дома должен начинаться с цифры\n\n"
+            "✅ Примеры правильных форматов:\n"
+            "• 12 (просто число)\n"
+            "• 15А (число и буква)\n"
+            "• 24/2 (дробный номер)\n"
+            "• 7-Б (число, дефис, буква)"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🏠 Введите номер дома:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🏠 Введите номер дома:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.house)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
+    if not re.match(r"^[\dа-яА-Яa-zA-Z\/\-\.\s]+$", house):
+        error_msg = await message.answer(
+            "❌ Номер дома содержит недопустимые символы\n\n"
+            "✅ Можно использовать:\n"
+            "• Цифры 0-9\n"
+            "• Буквы (русские и английские)\n"
+            "• Слэш (/), дефис (-), точку (.)\n\n"
+            "🚫 Нельзя: @ # $ % ^ & * и другие спецсимволы"
+        )
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            last_hint = await message.answer(text="🏠 Введите номер дома:")
+            await state.update_data(
+                last_hint_id=last_hint.message_id, user_messages=[], error_msg_id=None
+            )
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+            last_hint = await message.answer(text="🏠 Введите номер дома:")
+            await state.update_data(last_hint_id=last_hint.message_id)
+        await state.set_state(OrderForm.house)
+        await state.update_data(
+            user_messages=user_messages, error_msg_id=error_msg.message_id
+        )
+        return
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
-    is_complete = await OrderQueries.update_info(
-        telegram_id=message.from_user.id,
-        address_id=address_id,
-        column="house",
-        data=message.text,
-    )
+    try:
+        is_complete = await OrderQueries.update_info(
+            telegram_id=message.from_user.id,
+            address_id=address_id,
+            column="house",
+            data=house,
+        )
+    except Exception as e:
+        print(f"Ошибка сохранения номера дома: {e}")
+        error_msg = await message.answer("❌ Ошибка сохранения. Попробуйте снова:")
+        await asyncio.sleep(3)
+        await error_msg.delete()
+        return
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id
     )
@@ -813,7 +1537,7 @@ async def process_house(message: Message, state: FSMContext):
     )
     temp_mess = await message.answer("✅ *Данные обновлены*", parse_mode="Markdown")
     new_hint = await message.answer(
-        "🚪 *Введите Номер квартиры:*",
+        "🚪 *Введите Номер квартиры:*\n\n_Если нет квартиры - нажмите 'Пропустить'_",
         parse_mode="Markdown",
         reply_markup=await OrderProcessing.kb_skip_state(),
     )
@@ -834,13 +1558,86 @@ async def process_apartment(message: Message, state: FSMContext):
     last_hint_id = data.get("last_hint_id")
     user_messages = data.get("user_messages", [])
     user_messages.append(message.message_id)
+    apartment = message.text.strip()
+    error_msg_id = data.get("error_msg_id")
+    messages_to_delete = []
+    if error_msg_id:
+        messages_to_delete.append(error_msg_id)
+        if last_hint_id:
+            messages_to_delete.append(last_hint_id)
+        messages_to_delete.extend(user_messages)
+        try:
+            await delete_messages(bot, message.chat.id, messages_to_delete)
+            await state.update_data(user_messages=[], error_msg_id=None)
+        except Exception as e:
+            print(f"Ошибка удаления сообщений: {e}")
+    if apartment:
+        if len(apartment) > 10:
+            error_msg = await message.answer(
+                "❌ Номер квартиры слишком длинный (максимум 10 символов)"
+            )
+            if last_hint_id:
+                messages_to_delete.append(last_hint_id)
+            messages_to_delete.extend(user_messages)
+            try:
+                await delete_messages(bot, message.chat.id, messages_to_delete)
+                last_hint = await message.answer(text="🚪 Введите номер квартиры:")
+                await state.update_data(
+                    last_hint_id=last_hint.message_id,
+                    user_messages=[],
+                    error_msg_id=None,
+                )
+            except Exception as e:
+                print(f"Ошибка удаления сообщений: {e}")
+                last_hint = await message.answer(text="🚪 Введите номер квартиры:")
+                await state.update_data(last_hint_id=last_hint.message_id)
+            await state.set_state(OrderForm.apartment)
+            await state.update_data(
+                user_messages=user_messages, error_msg_id=error_msg.message_id
+            )
+            return
+        if not re.match(r"^[\dа-яА-Яa-zA-Z]+$", apartment):
+            error_msg = await message.answer(
+                "❌ Номер квартиры содержит недопустимые символы\n\n"
+                "✅ Можно использовать:\n"
+                "• Цифры 0-9\n"
+                "• Буквы (русские и английские)\n\n"
+                "🚫 Нельзя: пробелы, дефисы, слэши и другие символы"
+            )
+            if last_hint_id:
+                messages_to_delete.append(last_hint_id)
+            messages_to_delete.extend(user_messages)
+            try:
+                await delete_messages(bot, message.chat.id, messages_to_delete)
+                last_hint = await message.answer(text="🚪 Введите номер квартиры:")
+                await state.update_data(
+                    last_hint_id=last_hint.message_id,
+                    user_messages=[],
+                    error_msg_id=None,
+                )
+            except Exception as e:
+                print(f"Ошибка удаления сообщений: {e}")
+                last_hint = await message.answer(text="🚪 Введите номер квартиры:")
+                await state.update_data(last_hint_id=last_hint.message_id)
+            await state.set_state(OrderForm.apartment)
+            await state.update_data(
+                user_messages=user_messages, error_msg_id=error_msg.message_id
+            )
+            return
     await delete_messages(bot, message.chat.id, [last_hint_id] + user_messages)
-    is_complete = await OrderQueries.update_info(
-        telegram_id=message.from_user.id,
-        address_id=address_id,
-        column="apartment",
-        data=message.text,
-    )
+    try:
+        is_complete = await OrderQueries.update_info(
+            telegram_id=message.from_user.id,
+            address_id=address_id,
+            column="apartment",
+            data=apartment if apartment else None,
+        )
+    except Exception as e:
+        print(f"Ошибка сохранения номера квартиры: {e}")
+        error_msg = await message.answer("❌ Ошибка сохранения. Попробуйте снова:")
+        await asyncio.sleep(3)
+        await error_msg.delete()
+        return
     address_data = await OrderQueries.get_user_address_data(
         message.from_user.id, address_id
     )

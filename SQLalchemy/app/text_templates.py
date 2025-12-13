@@ -170,7 +170,7 @@ async def order_data_structure(list_of_books, total_price, order_data, user_bala
 
 async def text_address_data(order_data):
     defaults = (None,) * 8
-    name, phone, city, street, house, apartment, comment, is_complete = (
+    name, phone, city, street, house, apartment, is_complete, comment = (
         order_data if order_data else defaults
     )
     name = name if name else "Не указано"
