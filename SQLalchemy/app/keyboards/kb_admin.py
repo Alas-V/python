@@ -596,7 +596,7 @@ class KbAdmin:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"✅Сделать @{username} администратором ",
+                        text=f"✅Сделать {username} администратором ",
                         callback_data=f"made_new_admin_{telegram_id}",
                     )
                 ],

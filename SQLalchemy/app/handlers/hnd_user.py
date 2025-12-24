@@ -7,7 +7,7 @@ from queries.orm import (
     AdminQueries,
 )
 from aiogram.types import CallbackQuery, Message
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from keyboards.kb_user import UserKeyboards
 from keyboards.kb_review import KbReview
 from text_templates import (

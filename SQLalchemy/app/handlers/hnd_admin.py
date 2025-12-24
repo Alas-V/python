@@ -2324,7 +2324,6 @@ async def admin_book_publishing(
                         reply_markup=await KbAdmin.kb_after_published_book(book_id),
                     )
                     await state.update_data(main_message_id=main_message.message_id)
-                    return
                 except Exception as e:
                     print(f"admin_book_publishing_  удалось удалить подсказку: {e}")
             main_message = await bot.edit_message_text(
@@ -4260,7 +4259,7 @@ async def waiting_for_admin_name(
         await message.delete()
     except Exception as e:
         print(f"Не удалось удалить сообщение пользователя: {e}")
-    admin_name = message.text.strip().lower().capitalize()
+    admin_name = message.text.strip().lower().title()
     set_name_success = await AdminQueries.set_admin_new_name(admin_id, admin_name)
     if not set_name_success:
         last_hint = await bot.edit_message_text(
@@ -4307,7 +4306,7 @@ async def waiting_for_username(
         await message.delete()
     except Exception as e:
         print(f"Не удалось удалить сообщение пользователя: {e}")
-    username = message.text.strip()
+    username = message.text.strip().lower()
     if not username.startswith("@"):
         username = f"@{username}"
     user = await AdminQueries.is_user_in_db(username)
@@ -4316,7 +4315,7 @@ async def waiting_for_username(
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=main_message_id,
-                text=f"❌ Пользователь @{username} не найден.\n\n"
+                text=f"❌ Пользователь {username} не найден.\n\n"
                 f"Для того чтобы сделать администратором пользователя: @{username}\n"
                 f"<b>Он должен запускать бота</b> 📲 <i>(/start)</i>",
                 reply_markup=await KbAdmin.try_again_make_admin(),
@@ -4340,7 +4339,7 @@ async def waiting_for_username(
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=main_message_id,
-                text=f"❌ Пользователь @{username} уже является администратором.\n\n",
+                text=f"❌ Пользователь {username} уже является администратором.\n\n",
                 reply_markup=await KbAdmin.try_again_make_admin(),
                 parse_mode="HTML",
             )
@@ -4370,7 +4369,7 @@ async def waiting_for_username(
         await bot.edit_message_text(
             chat_id=chat_id,
             message_id=main_message_id,
-            text=f"Вы уверены что хотите сделать пользователя @{username} администратором? ",
+            text=f"Вы уверены что хотите сделать пользователя {username} администратором? ",
             reply_markup=await KbAdmin.sure_to_made_admin(user.telegram_id, username),
         )
     except Exception as e:
@@ -4402,7 +4401,7 @@ async def AdminSearchAdminByUsername_waiting_for_username(
         await message.delete()
     except Exception as e:
         print(f"Не удалось удалить сообщение пользователя: {e}")
-    username = message.text.strip()
+    username = message.text.strip().lower()
     if not username:
         hint_message = await message.answer(
             text="❌ Username не может быть пустым. Попробуйте еще раз:"

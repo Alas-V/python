@@ -2790,24 +2790,31 @@ class DBData:
     async def fake_data():
         async with AsyncSessionLocal() as session:
             # Создаем основного пользователя и админа
-            # user = User(
-            #     username="@sentrybuster",
-            #     user_first_name="Artem",
-            #     telegram_id=717149416,
-            # )
-            # cart = Cart(telegram_id=user.telegram_id)
-            # user.cart = cart
-            # session.add_all([user, cart])
-
-            # admin = Admin(
-            #     telegram_id=717149416,
-            #     name="Артём",
-            #     permissions=AdminPermission.SUPER_ADMIN_PERMS,
-            #     role_name="super_admin",
-            # )
-            # session.add(admin)
-            # await session.flush()
-            # await session.commit()
+            user = User(
+                username="@sentrybuster",
+                user_first_name="Artem",
+                telegram_id=717149416,
+            )
+            cart = Cart(telegram_id=user.telegram_id)
+            user.cart = cart
+            session.add_all([user, cart])
+            user = User(
+                username="@sentrybuster",
+                user_first_name="Artem",
+                telegram_id=717149416,
+            )
+            cart = Cart(telegram_id=user.telegram_id)
+            user.cart = cart
+            session.add_all([user, cart])
+            admin = Admin(
+                telegram_id=717149416,
+                name="Артём",
+                permissions=AdminPermission.SUPER_ADMIN_PERMS,
+                role_name="super_admin",
+            )
+            session.add(admin)
+            await session.flush()
+            await session.commit()
 
             # # Создаем авторов
             # authors = [
