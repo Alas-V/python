@@ -91,6 +91,8 @@ async def cmd_start(message: Message, state: FSMContext):
     text = f"""
 📖 Привет {user.user_first_name}, Я — Book Bot *DEMO*, твой персональный помощник в мире книг.  
 
+    Как работает бот - https://youtu.be/UZgf7kV-oJU
+
     ✨ Здесь ты можешь:  
     
     - 🛒 Купить новинки и бестселлеры  
@@ -129,6 +131,8 @@ async def menu(callback: CallbackQuery, state: FSMContext):
     is_admin = await AdminQueries.is_user_admin(int(callback.from_user.id))
     text = """
 📚 Главное меню Book Bot *DEMO*. Твой персональный помощник в мире книг.
+
+    Как работает бот - https://youtu.be/UZgf7kV-oJ
 
 Выберите раздел:
 
