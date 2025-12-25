@@ -132,7 +132,7 @@ async def menu(callback: CallbackQuery, state: FSMContext):
     text = """
 📚 Главное меню Book Bot *DEMO*. Твой персональный помощник в мире книг.
 
-    Как работает бот - https://youtu.be/UZgf7kV-oJ
+    Как работает бот - https://youtu.be/UZgf7kV-oJU
 
 Выберите раздел:
 
