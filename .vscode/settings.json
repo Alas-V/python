@@ -3,6 +3,7 @@
         "aiogram",
         "changereview",
         "ilike",
+        "notinstock",
         "reviewchange",
         "reviewsdelete",
         "reviewssure",

@@ -2798,14 +2798,7 @@ class DBData:
             cart = Cart(telegram_id=user.telegram_id)
             user.cart = cart
             session.add_all([user, cart])
-            user = User(
-                username="@sentrybuster",
-                user_first_name="Artem",
-                telegram_id=717149416,
-            )
-            cart = Cart(telegram_id=user.telegram_id)
-            user.cart = cart
-            session.add_all([user, cart])
+
             admin = Admin(
                 telegram_id=717149416,
                 name="Артём",
